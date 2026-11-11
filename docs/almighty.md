@@ -32,6 +32,22 @@ is a transformation of data the tool already holds: text, bytecode, or bytes.
 
 ---
 
+## Three passes, one line of source
+
+Recovering the *idiom* is the difference between code that runs and code someone
+can read.  A dispatcher loop becomes a `while`, the `while` is recognised as an
+index loop, the index loop becomes the `for` the source had:
+
+```
+i = 0; while i < len(items): acc += items[i] * 2; i += 1     (lifted)
+for i in range(len(items)): …                                (index loop)
+for _item in items: acc += _item * 2                         (idiom recovered)
+```
+
+The last step only happens when the index is used *solely* to subscript that one
+sequence and to increment — read the index for its value and it stays an index
+loop, because then it really was one.
+
 ## Indicators, not just source
 
 A recovered file is half the job; the other half is what the sample talks to.
@@ -44,6 +60,10 @@ every string literal, so an address that was one codec away still gets reported:
 | `zlib.decompress(b64decode(s[::-1]))` | whole config, reversed | every indicator inside it |
 | `"185.220.101.42"` in a packed blob | no literal at all | the address, carved from the bytes |
 | Telegram stealer | bot token + chat id | both, paired |
+
+`--yara` turns the same sheet into a rule you can ship: named string groups per
+indicator type, a meta block with hash, date and TLP, and a condition that bounds
+the file size and requires more than one indicator when there are enough of them.
 
 Everything in the sheet is defanged; the JSON keeps the raw values.  A folder
 run also writes `iocs-all.md`, which merges indicators across samples and shows

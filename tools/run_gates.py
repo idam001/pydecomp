@@ -39,6 +39,7 @@ SUITE = {
     "families": (GATES / "families_probe.py", {}, False),
     "iocs": (GATES / "test_iocs.py", {}, False),
     "shapes": (GATES / "shapes_probe.py", {}, False),
+    "yara": (GATES / "test_yara.py", {}, False),
     "identity": (GATES / "test_identity.py", {}, False),
     "probes": (GATES / "test_probes.py", {}, False),
     "native": (GATES / "test_native.py", {}, True),

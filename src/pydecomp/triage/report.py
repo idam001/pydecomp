@@ -112,6 +112,16 @@ def write_reports(path: str, report: dict, trace: list, name: str, size: int,
         pass
     try:
         sheet = {"iocs": report.get("iocs", {}), "counts": report.get("ioc_counts", {})}
+        if report.get("yara"):
+            try:
+                from ..triage.yara import write_rule
+                import datetime as _dt
+                rule_path = os.path.join(folder, stem + ".yar")
+                if write_rule(rule_path, name, sheet, digest=digest,
+                              date=_dt.date.today().isoformat()):
+                    written["yara"] = rule_path
+            except Exception:                        # noqa: BLE001
+                pass
         ioc_path = os.path.join(folder, stem + ".iocs.md")
         with open(ioc_path, "w", encoding="utf-8") as handle:
             handle.write(render_markdown(name, sheet, digest))

@@ -23,6 +23,7 @@ from ..polish.demangle import _ast, _demangle
 from ..polish.evaluate import fold_expressions
 from ..polish.fold import _fold_constants, _fold_literals
 from ..polish.inline import inline_pure_functions, propagate_constants
+from ..polish.loops import recover_loops
 from ..polish.mba import simplify_mba
 from ..polish.opaque import strip_opaque
 from ..polish.strarrays import resolve_string_arrays
@@ -107,6 +108,13 @@ def _one_round(tree, notes, fast: bool) -> int:
         if flat:
             notes.append(f"un-flattened {flat} state machine(s)")
             changed += flat
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        loops = recover_loops(tree)
+        if loops:
+            notes.append(f"recovered {loops} for-loop(s)")
+            changed += loops
     except Exception:                                    # noqa: BLE001
         pass
     return changed, unicode_legend

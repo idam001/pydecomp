@@ -201,6 +201,7 @@ def test_the_whole_pipeline_deflattens():
     from pydecomp.polish.apply import polish_source
     text, notes = polish_source(SIMPLE_LOOP)
     assert "_state" not in text
-    assert "while " in text
+    # the dispatcher becomes a loop, and the loop is then recognised as a `for`
+    assert "for _item in items:" in text or "while " in text
     assert "return _acc" in text
     assert any("flatten" in note for note in notes), notes

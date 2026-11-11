@@ -34,7 +34,7 @@ def _strip_pydecomp_preamble(text: str) -> str:
 
 def deobfuscate(src_path: str, out_dir: str | None = None,
                 clean: bool = True, keep_artifacts: bool = False,
-                reports: bool = True, verify: bool = False,
+                reports: bool = True, verify: bool = False, yara: bool = False,
                 dry_run: bool = False, neutralize: bool = False,
                 fast: bool = False) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
@@ -83,7 +83,19 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
 
     elapsed = time.time() - started
     side = {}
+    if not reports and yara:
+        # a rule only needs the sheet, not the whole report bundle
+        from ..triage.yara import write_rule
+        import datetime as _dt
+        folder = os.path.dirname(os.path.abspath(path))
+        stem = os.path.splitext(os.path.basename(path))[0]
+        rule = write_rule(os.path.join(folder, stem + ".yar"), name, report,
+                          digest=digest, date=_dt.date.today().isoformat())
+        if rule:
+            side["yara"] = rule
+            print("   " + paint("+ " + os.path.basename(rule), GREY))
     if reports:
+        report["yara"] = bool(yara)
         side = write_reports(path, report, trace, name, raw_size, digest, elapsed,
                              notes=clean_notes)
     if keep_artifacts:

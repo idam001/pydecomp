@@ -22,9 +22,20 @@ Unwrapping a packer is not the same as rebuilding a program.  This round is
 about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
-### Indicators, and control flow put back together
+### Indicators, control flow, and a shippable rule
 
 ### Added
+- **Loop idiom recovery** (`polish/loops.py`): `i = 0; while i < len(seq): …
+  seq[i] … i += 1` becomes `for item in seq:` — but only when the index is used
+  *solely* to subscript that one sequence and to increment, the sequence is not
+  mutated in the loop, and the step is exactly one.  Otherwise it becomes the
+  honest `for i in range(...)`, or stays a `while`.  Nested loops are recovered
+  from the inside out.
+- **YARA export** (`triage/yara.py`, `--yara`): a rule built from the recovered
+  indicators — meta block with author/hash/date/TLP, one named string group per
+  indicator type, and a layered condition (`filesize < 8MB` plus a count of
+  matches).  Generic indicators (`exec-sink`, `windows-path`, `encoded-blob`)
+  are deliberately excluded so the rule does not match goodware.
 - **Decode-aware indicator engine** (`triage/iocs.py`): 25 indicator families —
   Discord/Slack/Telegram channels, AWS/GitHub/GitLab/Slack/Stripe/Google/OpenAI
   keys, JWTs, private keys, wallets, onion services, database URIs, credential
@@ -43,7 +54,7 @@ without running it.
   predicate prover.  Nested loops come back as nested loops.
 - `polish/dead.py`: identical consecutive assignments (a flattening artefact)
   are collapsed.
-- Gates: `iocs` (27 checks) and `shapes` (flattened + inline-`__import__`
+- Gates: `iocs` (27 checks), `yara` (22 checks) and `shapes` (flattened + inline-`__import__`
   reconstruction); unit suite `tests/unit/test_unflatten.py` pins nine cases,
   including the four near-misses that must be left untouched.
 - **Static expression evaluator** (`polish/evaluate.py`): a bounded interpreter
@@ -169,9 +180,20 @@ Unwrapping a packer is not the same as rebuilding a program.  This round is
 about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
-### Indicators, and control flow put back together
+### Indicators, control flow, and a shippable rule
 
 ### Added
+- **Loop idiom recovery** (`polish/loops.py`): `i = 0; while i < len(seq): …
+  seq[i] … i += 1` becomes `for item in seq:` — but only when the index is used
+  *solely* to subscript that one sequence and to increment, the sequence is not
+  mutated in the loop, and the step is exactly one.  Otherwise it becomes the
+  honest `for i in range(...)`, or stays a `while`.  Nested loops are recovered
+  from the inside out.
+- **YARA export** (`triage/yara.py`, `--yara`): a rule built from the recovered
+  indicators — meta block with author/hash/date/TLP, one named string group per
+  indicator type, and a layered condition (`filesize < 8MB` plus a count of
+  matches).  Generic indicators (`exec-sink`, `windows-path`, `encoded-blob`)
+  are deliberately excluded so the rule does not match goodware.
 - **Decode-aware indicator engine** (`triage/iocs.py`): 25 indicator families —
   Discord/Slack/Telegram channels, AWS/GitHub/GitLab/Slack/Stripe/Google/OpenAI
   keys, JWTs, private keys, wallets, onion services, database URIs, credential
@@ -190,7 +212,7 @@ without running it.
   predicate prover.  Nested loops come back as nested loops.
 - `polish/dead.py`: identical consecutive assignments (a flattening artefact)
   are collapsed.
-- Gates: `iocs` (27 checks) and `shapes` (flattened + inline-`__import__`
+- Gates: `iocs` (27 checks), `yara` (22 checks) and `shapes` (flattened + inline-`__import__`
   reconstruction); unit suite `tests/unit/test_unflatten.py` pins nine cases,
   including the four near-misses that must be left untouched.
 - **Static expression evaluator** (`polish/evaluate.py`): a bounded interpreter
