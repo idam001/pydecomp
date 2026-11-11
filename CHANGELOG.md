@@ -22,7 +22,30 @@ Unwrapping a packer is not the same as rebuilding a program.  This round is
 about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
+### Indicators, and control flow put back together
+
 ### Added
+- **Decode-aware indicator engine** (`triage/iocs.py`): 25 indicator families —
+  Discord/Slack/Telegram channels, AWS/GitHub/GitLab/Slack/Stripe/Google/OpenAI
+  keys, JWTs, private keys, wallets, onion services, database URIs, credential
+  stores, exec sinks — scanned over the recovered source *and* over base64,
+  base32, hex, reversed and rot13 variants of every string literal, plus the
+  printable runs carved from the raw input.  Telegram chat IDs are paired with
+  the bot token that anchors them.  Everything is defanged (`.` → `[.]`,
+  `http` → `hxxp`) in the sheet, raw in the JSON.
+- **IOC sheets**: `<name>.iocs.md` beside every recovered file, and `iocs-all.md`
+  for a folder — which merges indicators across samples and lists the
+  infrastructure they share.
+- **Control-flow-flattening reconstruction** (`polish/unflatten.py` rewritten):
+  the dispatcher loop is read as a graph — blocks keyed by state, transitions
+  from the trailing state assignment, back edges turned into `while` loops,
+  non-looping arms into `if`/`else`, opaque entry conditions settled by the
+  predicate prover.  Nested loops come back as nested loops.
+- `polish/dead.py`: identical consecutive assignments (a flattening artefact)
+  are collapsed.
+- Gates: `iocs` (27 checks) and `shapes` (flattened + inline-`__import__`
+  reconstruction); unit suite `tests/unit/test_unflatten.py` pins nine cases,
+  including the four near-misses that must be left untouched.
 - **Static expression evaluator** (`polish/evaluate.py`): a bounded interpreter
   for pure expressions — literals, arithmetic, slicing, comparisons,
   comprehensions over literal iterables, f-strings, lambdas, a whitelisted method
@@ -146,7 +169,30 @@ Unwrapping a packer is not the same as rebuilding a program.  This round is
 about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
+### Indicators, and control flow put back together
+
 ### Added
+- **Decode-aware indicator engine** (`triage/iocs.py`): 25 indicator families —
+  Discord/Slack/Telegram channels, AWS/GitHub/GitLab/Slack/Stripe/Google/OpenAI
+  keys, JWTs, private keys, wallets, onion services, database URIs, credential
+  stores, exec sinks — scanned over the recovered source *and* over base64,
+  base32, hex, reversed and rot13 variants of every string literal, plus the
+  printable runs carved from the raw input.  Telegram chat IDs are paired with
+  the bot token that anchors them.  Everything is defanged (`.` → `[.]`,
+  `http` → `hxxp`) in the sheet, raw in the JSON.
+- **IOC sheets**: `<name>.iocs.md` beside every recovered file, and `iocs-all.md`
+  for a folder — which merges indicators across samples and lists the
+  infrastructure they share.
+- **Control-flow-flattening reconstruction** (`polish/unflatten.py` rewritten):
+  the dispatcher loop is read as a graph — blocks keyed by state, transitions
+  from the trailing state assignment, back edges turned into `while` loops,
+  non-looping arms into `if`/`else`, opaque entry conditions settled by the
+  predicate prover.  Nested loops come back as nested loops.
+- `polish/dead.py`: identical consecutive assignments (a flattening artefact)
+  are collapsed.
+- Gates: `iocs` (27 checks) and `shapes` (flattened + inline-`__import__`
+  reconstruction); unit suite `tests/unit/test_unflatten.py` pins nine cases,
+  including the four near-misses that must be left untouched.
 - **Static expression evaluator** (`polish/evaluate.py`): a bounded interpreter
   for pure expressions — literals, arithmetic, slicing, comparisons,
   comprehensions over literal iterables, f-strings, lambdas, a whitelisted method

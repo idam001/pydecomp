@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from pydecomp.triage.iocs import (          # noqa: E402
-    defang, entropy, extract, render_markdown, summary,
+    defang, entropy, extract, render_batch_sheet, render_markdown, summary,
 )
 
 FAILED = []
@@ -159,6 +159,17 @@ def main():
             sheet_text = handle.read()
         ok("telegram-bot" in sheet_text and "hxxps://discord" in sheet_text,
            "sheet carries the operational indicators")
+
+    # --- batch sheet: shared infrastructure --------------------------------
+    per_file = [("alpha.py", {"url": ["http://shared-c2.example-cdn.top/a"]}),
+                ("beta.py", {"url": ["http://shared-c2.example-cdn.top/a"]}),
+                ("gamma.py", {"url": ["http://solo.example-cdn.top/b"]})]
+    merged = {"url": {"http://shared-c2.example-cdn.top/a",
+                      "http://solo.example-cdn.top/b"}}
+    batch = render_batch_sheet(per_file, merged)
+    ok("Shared infrastructure" in batch, "batch sheet groups shared indicators")
+    ok("alpha.py, beta.py" in batch, "shared indicator names its carriers")
+    ok("hxxp" in batch and "[.]" in batch, "batch sheet is defanged too")
 
     if FAILED:
         print(f"\n{len(FAILED)} failed")

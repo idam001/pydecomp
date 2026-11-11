@@ -32,6 +32,23 @@ is a transformation of data the tool already holds: text, bytecode, or bytes.
 
 ---
 
+## Indicators, not just source
+
+A recovered file is half the job; the other half is what the sample talks to.
+`triage/iocs.py` runs over the recovered source *and* over decode variants of
+every string literal, so an address that was one codec away still gets reported:
+
+| sample | hides | pydecomp reports |
+| --- | --- | --- |
+| `b64decode('aHR0cDovL2…')` | C2 URL in base64 | the URL |
+| `zlib.decompress(b64decode(s[::-1]))` | whole config, reversed | every indicator inside it |
+| `"185.220.101.42"` in a packed blob | no literal at all | the address, carved from the bytes |
+| Telegram stealer | bot token + chat id | both, paired |
+
+Everything in the sheet is defanged; the JSON keeps the raw values.  A folder
+run also writes `iocs-all.md`, which merges indicators across samples and shows
+which files share infrastructure.
+
 ## The pipeline runs to a fixed point
 
 Deobfuscation passes feed each other: propagation exposes a decoder call,

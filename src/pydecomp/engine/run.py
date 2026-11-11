@@ -148,10 +148,53 @@ def deobfuscate_tree(target: str, out_dir: str | None = None, **kwargs) -> list[
         return []
     print("   " + paint(f"{len(todo)} file(s) queued", CYAN))
     written = []
+    sheets = []
     for entry in todo[:400]:
         result = deobfuscate(entry, out_dir, **kwargs)
         if result:
             written.append(result)
+            folder = os.path.dirname(os.path.abspath(result))
+            stem = os.path.splitext(os.path.basename(result))[0]
+            if kwargs.get("reports", True):
+                sheet_path = os.path.join(folder, stem + ".iocs.md")
+                if os.path.exists(sheet_path):
+                    sheets.append((result, sheet_path))
     print()
     print("   " + paint(f"{len(written)} of {len(todo)} recovered", GREEN + BOLD))
+    combined = _combine_sheets(written, sheets)
+    if combined:
+        print("   " + paint(f"+ {os.path.basename(combined)}", GREY))
     return written
+
+
+def _combine_sheets(written: list, sheets: list) -> str | None:
+    """One indicator sheet for a whole folder, merged per type."""
+    import json
+    merged: dict[str, set] = {}
+    per_file: list[tuple[str, dict]] = []
+    for result, _path in sheets:
+        folder = os.path.dirname(os.path.abspath(result))
+        stem = os.path.splitext(os.path.basename(result))[0]
+        report_path = os.path.join(folder, stem + ".report.json")
+        try:
+            with open(report_path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        iocs = data.get("iocs") or {}
+        if not iocs:
+            continue
+        per_file.append((data.get("input", stem), iocs))
+        for label, values in iocs.items():
+            merged.setdefault(label, set()).update(values)
+    if not merged or not written:
+        return None
+    from ..triage.iocs import render_batch_sheet
+    folder = os.path.dirname(os.path.abspath(written[0]))
+    path = os.path.join(folder, "iocs-all.md")
+    try:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(render_batch_sheet(per_file, merged))
+    except OSError:
+        return None
+    return path

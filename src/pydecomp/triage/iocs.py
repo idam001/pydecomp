@@ -365,3 +365,34 @@ def render_markdown(name: str, sheet: dict, digest: str = "") -> str:
         lines += [f"- `{defang(value)}`" for value in values]
         lines.append("")
     return "\n".join(lines)
+
+
+def render_batch_sheet(per_file: list, merged: dict[str, set]) -> str:
+    """One sheet for a folder of samples: what is shared, and who carries what."""
+    lines = ["# Indicator sheet — batch", ""]
+    total = sum(len(values) for values in merged.values())
+    lines += [f"- **{len(per_file)} file(s)** with indicators",
+              f"- **{total} indicator(s)** across {len(merged)} type(s)", ""]
+    lines += ["## Shared infrastructure", ""]
+    owners: dict[str, set] = {}
+    for label, values in merged.items():
+        for value in values:
+            carriers = {name for name, iocs in per_file if value in (iocs.get(label) or [])}
+            owners[value] = carriers
+    shared = {value: carriers for value, carriers in owners.items() if len(carriers) > 1}
+    if shared:
+        lines += ["| indicator | seen in |", "| --- | --- |"]
+        for value, carriers in sorted(shared.items(), key=lambda item: -len(item[1]))[:40]:
+            lines.append(f"| `{defang(value)}` | {', '.join(sorted(carriers))} |")
+    else:
+        lines.append("- nothing shared between samples")
+    lines.append("")
+    lines += ["## By type", ""]
+    for label in sorted(merged, key=lambda item: (-_SEVERITY_ORDER.get(
+            _SEVERITY.get(item, "info"), 9), item)):
+        values = merged[label]
+        lines.append(f"### {label} ({len(values)}, {_SEVERITY.get(label, 'info')})")
+        lines.append("")
+        lines += [f"- `{defang(value)}`" for value in sorted(values)[:60]]
+        lines.append("")
+    return "\n".join(lines)
