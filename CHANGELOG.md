@@ -50,6 +50,13 @@ without running it.
   `blob[32:48]`) — with AES-CBC/ECB fallbacks for older builds.  Entirely static:
   no sample execution, no network.  When the password is not in the file, the
   ciphertext is emitted and the report says why.
+- **Payload splicing** (`engine/splice.py`): when a recovered payload still
+  reads a table, helper or import defined by the outer module, those definitions
+  are carried across and the loader statements never are — so the result imports
+  instead of dangling on free names.
+- `tests/integration/families_probe.py` — BlankOBF, pyobfuscate.dev, Jawbreaker,
+  Wodx and PlusOBF recipes, reconstructed end to end by the generic engine with
+  no per-family special case.
 - `tests/integration/test_reconstruct.py` — ten checks covering the evaluator,
   its refusals, inlining, fixed-point chaining, Hyperion, pyobfuscate.com, the
   locked-payload path and reconstruction at scale.
@@ -167,6 +174,13 @@ without running it.
   `blob[32:48]`) — with AES-CBC/ECB fallbacks for older builds.  Entirely static:
   no sample execution, no network.  When the password is not in the file, the
   ciphertext is emitted and the report says why.
+- **Payload splicing** (`engine/splice.py`): when a recovered payload still
+  reads a table, helper or import defined by the outer module, those definitions
+  are carried across and the loader statements never are — so the result imports
+  instead of dangling on free names.
+- `tests/integration/families_probe.py` — BlankOBF, pyobfuscate.dev, Jawbreaker,
+  Wodx and PlusOBF recipes, reconstructed end to end by the generic engine with
+  no per-family special case.
 - `tests/integration/test_reconstruct.py` — ten checks covering the evaluator,
   its refusals, inlining, fixed-point chaining, Hyperion, pyobfuscate.com, the
   locked-payload path and reconstruction at scale.
