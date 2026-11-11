@@ -155,3 +155,39 @@ def test_pipeline_reports_the_recovered_loop():
         "    return out\n")
     assert "for " in text
     assert any("for-loop" in note for note in notes), notes
+
+
+def test_mutable_literals_are_never_propagated():
+    """`results = []` + `results.append(x)` is not `[].append(x)`."""
+    from pydecomp.polish.apply import polish_source
+    text, _notes = polish_source(
+        "def report(items):\n"
+        "    results = []\n"
+        "    for item in items:\n"
+        "        results.append(item * 2)\n"
+        "    return results\n")
+    assert "results = []" in text
+    assert "results.append" in text
+    assert "return results" in text
+    assert "[].append" not in text
+
+
+def test_mutable_dicts_are_never_propagated():
+    from pydecomp.polish.apply import polish_source
+    text, _notes = polish_source(
+        "def build():\n"
+        "    cfg = {}\n"
+        "    cfg['a'] = 1\n"
+        "    return cfg\n")
+    assert "cfg = {}" in text
+    assert "cfg['a'] = 1" in text
+    assert "{}['a']" not in text
+
+
+def test_scalar_constants_are_still_propagated():
+    from pydecomp.polish.apply import polish_source
+    text, _notes = polish_source(
+        "def f():\n"
+        "    limit = 3\n"
+        "    return limit * 2\n")
+    assert "return 6" in text or "return limit * 2" in text

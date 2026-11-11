@@ -76,6 +76,20 @@ def _bound_names(tree) -> dict[str, int]:
     return counts
 
 
+def _immutable(value) -> bool:
+    """Can this value be substituted at every use without changing meaning?
+
+    A literal ``[]`` is not a constant: ``results = []; results.append(x)``
+    means something different from ``[].append(x)``, and a dict or set behaves
+    the same way.  Only immutable scalars (and tuples of them) are propagated.
+    """
+    if isinstance(value, (str, bytes, int, float, bool, type(None), complex)):
+        return True
+    if isinstance(value, (tuple, frozenset)):
+        return all(_immutable(item) for item in value)
+    return False
+
+
 def _scope_counts(body) -> dict[str, int]:
     """How many times each name is *bound* in one scope (nested scopes excluded)."""
     counts: dict[str, int] = {}
@@ -166,9 +180,12 @@ def propagate_constants(tree) -> tuple[int, dict]:
                     # module scope: a name rebound anywhere is not a constant
                     continue
                 try:
-                    env[name] = evaluate(value, dict(env), _Budget(10_000))
+                    resolved = evaluate(value, dict(env), _Budget(10_000))
                 except (Unevaluable, RecursionError):
                     continue
+                if not _immutable(resolved):
+                    continue          # mutable: aliasing and mutation matter
+                env[name] = resolved
             if env:
                 sub = _ScopeSub(env)
                 for index, stmt in enumerate(body):

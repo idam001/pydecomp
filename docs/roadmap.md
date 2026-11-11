@@ -11,8 +11,13 @@ write. Items move up when someone sends a sample that needs them.
 - **Generator expressions with `yield from`** inside larger expressions.
 - **Better demangling**: keep the original name when the mangled one is longer
   than the recovered meaning, and note every rename in the report.
-- **Benchmark cases 44/44** — currently 33/44 semantic, 11/11 rebuilt as source.
-  The remaining 11 need opaque-predicate resolution over string constants.
+- **Honest benchmark denominator.** The score reads 33/44, but nine of those
+  eleven missing points are unattainable: several generated cases never contain
+  all three truth strings (`01_plain_pyc` has no marker, `05_flattened` and
+  `07_mba` have no endpoint). Derive `truth.json` per case from the source that
+  was generated; the reachable maximum is 35/44 and the tool is at 33/35.
+- **Case `11_nightmare`** is the only real shortfall (1/4): six layers plus a
+  decoder reassigned inside a counted loop. See `docs/UPGRADES.md` P1-6.
 
 ## Next
 
