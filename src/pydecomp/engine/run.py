@@ -68,11 +68,23 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     clean_notes: list[str] = []
     if artifact.kind in ("source", "pseudo"):
         body, clean_notes = polish_source(body, clean, fast=fast)
+    fidelity = None
+    if artifact.kind in ("source", "pseudo"):
+        from ..polish.fidelity import summary as fidelity_summary, verify as verify_fidelity
+        fidelity = verify_fidelity(_strip_pydecomp_preamble(artifact.text), body)
+        if fidelity["kept"] == "unpacked":
+            body = fidelity["text"]
+            clean_notes = list(clean_notes) + [fidelity["reason"]]
+        print("   " + paint("fidelity   " + fidelity_summary(fidelity),
+                            GREEN if fidelity["kept"] == "cleaned" else YELLOW))
     if neutralize:
         body, guard_notes = neutralize_source(body)
         clean_notes = list(clean_notes) + guard_notes
 
     report = analyse_recovered(body, trace, raw=raw)
+    if fidelity is not None:
+        report["fidelity"] = {key: fidelity[key] for key in ("kept", "reason")} | {
+            "before": fidelity["before"], "after": fidelity["after"]}
     rule_text = None
     if yara:
         try:

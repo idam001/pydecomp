@@ -25,6 +25,17 @@ without running it.
 ### Indicators, control flow, a shippable rule, and proof
 
 ### Added
+- **Fidelity guard** (`polish/fidelity.py`): the last check before a file is
+  written.  The cleaned text is compared with the program as it came out of the
+  container and is only kept when it is genuinely better — if cleaning produced
+  something that does not parse, removed more than a fifth of the definitions,
+  or turned a program into a wall of literals, the unpacked program is written
+  instead and the rollback is stated in the console and the report.  Cleaning may
+  improve recovered code; it may never replace it with rubbish.
+- **Fixed: mutable literals were being constant-propagated.** `results = []`
+  followed by `results.append(x)` became `[].append(x)`, and `return results`
+  became `return []`.  Only immutable scalars (and tuples of them) are
+  propagated now.
 - **YARA self-validation** (`triage/yara_check.py`): a strict parser for the
   subset of YARA this tool writes (sections, meta entries, string definitions
   with modifiers, escapes, condition references) plus a matcher, so every rule
@@ -196,6 +207,17 @@ without running it.
 ### Indicators, control flow, a shippable rule, and proof
 
 ### Added
+- **Fidelity guard** (`polish/fidelity.py`): the last check before a file is
+  written.  The cleaned text is compared with the program as it came out of the
+  container and is only kept when it is genuinely better — if cleaning produced
+  something that does not parse, removed more than a fifth of the definitions,
+  or turned a program into a wall of literals, the unpacked program is written
+  instead and the rollback is stated in the console and the report.  Cleaning may
+  improve recovered code; it may never replace it with rubbish.
+- **Fixed: mutable literals were being constant-propagated.** `results = []`
+  followed by `results.append(x)` became `[].append(x)`, and `return results`
+  became `return []`.  Only immutable scalars (and tuples of them) are
+  propagated now.
 - **YARA self-validation** (`triage/yara_check.py`): a strict parser for the
   subset of YARA this tool writes (sections, meta entries, string definitions
   with modifiers, escapes, condition references) plus a matcher, so every rule
