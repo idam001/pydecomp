@@ -52,6 +52,7 @@ nav:
       - Native and ELF: native.md
   - Project:
       - Development: development.md
+      - What I would upgrade next: UPGRADES.md
       - FAQ: faq.md
       - Roadmap: roadmap.md
 
