@@ -61,6 +61,19 @@ every string literal, so an address that was one codec away still gets reported:
 | `"185.220.101.42"` in a packed blob | no literal at all | the address, carved from the bytes |
 | Telegram stealer | bot token + chat id | both, paired |
 
+## Nothing is claimed that is not checked
+
+Two questions a deobfuscation tool should answer about its own output, and
+almost none do:
+
+| question | answer | where |
+| --- | --- | --- |
+| did the recovered rule actually match the code it came from? | parse the rule, run its condition against the recovered source, report hits | `--yara` prints `rule  matches its own source (5/5 strings)` |
+| did cleaning drop anything the container gave us? | compare definitions, statements, names, imports and literals before and after | `--diff` prints `coverage  complete: 5 definitions kept, 0 lost · 2/3 literals` |
+
+Both write a side file (`.yar`, `.coverage.md`) and both record their verdict in
+the JSON report, so a batch run can be audited afterwards.
+
 `--yara` turns the same sheet into a rule you can ship: named string groups per
 indicator type, a meta block with hash, date and TLP, and a condition that bounds
 the file size and requires more than one indicator when there are enough of them.

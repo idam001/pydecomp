@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
 
 from pydecomp.triage.iocs import extract      # noqa: E402
 from pydecomp.triage.yara import build_rule, write_rule   # noqa: E402
+from pydecomp.triage import yara_check        # noqa: E402
 
 FAILED = []
 
@@ -96,6 +97,40 @@ def main():
         ok(text.startswith("rule pydecomp_sample"), "written rule starts with its name")
         ok(text.rstrip().endswith("}"), "written rule closes its brace")
 
+    # --- the rule is validated, not just written ---------------------------
+    own = yara_check.validate(rule, SAMPLE.encode())
+    ok(own["ok"], f"rule validates: {own['problems']}")
+    ok(own["matched"], "rule matches the source it was built from")
+    ok(own["hit"] >= 3, "most indicator strings are found in that source")
+    ok("matches its own source" in yara_check.summary(own), "summary says it matches")
+
+    wrong = yara_check.validate(rule, b"unrelated bytes with nothing in them")
+    ok(not wrong["matched"], "rule does not match unrelated bytes")
+    ok(not wrong["ok"], "an unmatched rule is reported as a problem")
+
+    parsed = yara_check.parse(rule)
+    ok(parsed.name == "pydecomp_5_stealer", "parsed rule keeps its name")
+    ok(len(parsed.strings) >= 3, "parsed rule keeps its strings")
+    ok(all(isinstance(value, bytes) for _id, value, _mods in parsed.strings),
+       "string values are unescaped to bytes")
+    ok(parsed.meta.get("author") == "idam Emmanuel", "meta survives parsing")
+
+    # a // inside a URL must not be treated as a comment
+    ok(any(b"https://discord.com" in value for _id, value, _m in parsed.strings),
+       "URL slashes survive comment stripping")
+
+    for broken, why in (
+        ('rule x { strings: $a = "ab" ascii condition: $a }', "short string"),
+        ('rule x { strings: $a = "abcd" ascii condition: $b }', "undeclared string"),
+        ('rule x { strings: $a = "abcd" ascii condition: ($a }', "unbalanced parens"),
+        ('rule x { strings: $a = "abcd" ascii }', "no condition"),
+        ('rule x { condition: true }', "no strings"),
+        ('rule 1bad { condition: true }', "illegal rule name"),
+    ):
+        verdict = yara_check.validate(broken, b"abcdef")
+        ok(not verdict["ok"], f"{why} is rejected")
+        ok(bool(verdict["problems"]), f"{why} comes with a reason")
+
     # the CLI writes it too
     sample = os.path.join(work, "hidden.py")
     with open(sample, "w") as handle:
@@ -110,10 +145,23 @@ def main():
         ok(os.path.exists(os.path.join(folder, stem + ".yar")),
            "--yara writes the rule beside the recovered source")
 
+    # --- and the verdict reaches the JSON report ---------------------------
+    if saved:
+        import json
+        folder = os.path.dirname(saved)
+        stem = os.path.splitext(os.path.basename(saved))[0]
+        sample_rule = os.path.join(folder, stem + ".yar")
+        if os.path.exists(sample_rule):
+            from pydecomp.triage.yara_check import validate as _validate
+            text = open(sample_rule, encoding="utf-8").read()
+            recovered = open(saved, encoding="utf-8", errors="surrogateescape").read()
+            verdict = _validate(text, recovered.encode("utf-8", "surrogateescape"))
+            ok(verdict["ok"], "the rule written by the CLI matches the CLI's own output")
+
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1
-    print("\n22 checks passed — all good")
+    print("\n36 checks passed — all good")
     return 0
 
 

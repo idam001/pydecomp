@@ -72,6 +72,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="keep the recovered file exactly as lifted (no renaming/folding)")
     ap.add_argument("--reports", action="store_true",
                     help="also write .report.json / .report.md next to the output")
+    ap.add_argument("--diff", action="store_true",
+                    help="compare the recovered program with the unpacked original "
+                         "and report what was kept")
     ap.add_argument("--yara", action="store_true",
                     help="also write a YARA rule built from the recovered indicators")
     ap.add_argument("--artifacts", action="store_true",
@@ -108,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                                        keep_artifacts=args.artifacts,
                                        reports=args.reports,
                                        yara=args.yara,
+                                       diff=args.diff,
                                        verify=args.verify, dry_run=args.dry_run,
                                        neutralize=args.neutralize, fast=args.fast)
             return 0 if written else 1
@@ -115,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
                            keep_artifacts=args.artifacts,
                            reports=args.reports,
                            yara=args.yara,
+                           diff=args.diff,
                            verify=args.verify, dry_run=args.dry_run,
                            neutralize=args.neutralize, fast=args.fast)
         if path and args.verify:

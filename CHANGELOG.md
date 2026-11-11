@@ -22,9 +22,22 @@ Unwrapping a packer is not the same as rebuilding a program.  This round is
 about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
-### Indicators, control flow, and a shippable rule
+### Indicators, control flow, a shippable rule, and proof
 
 ### Added
+- **YARA self-validation** (`triage/yara_check.py`): a strict parser for the
+  subset of YARA this tool writes (sections, meta entries, string definitions
+  with modifiers, escapes, condition references) plus a matcher, so every rule
+  is checked against the source it was built from before it is written.  A rule
+  that cannot match its own sample, references an undeclared string, has a
+  string under YARA's 4-byte minimum or an unbalanced condition is reported as
+  broken instead of shipped.  The verdict goes into the JSON report
+  (`yara_check`) and onto the console line.
+- **`--diff` coverage** (`triage/coverage.py`): compares the program as it came
+  out of the container with the cleaned one — definitions kept/lost/emptied,
+  statement counts per function, module names, imports, and how many string and
+  numeric literals survived (with the folded ones counted, not hidden).  Writes
+  `<name>.coverage.md`, records the verdict in the JSON, and prints one line.
 - **Loop idiom recovery** (`polish/loops.py`): `i = 0; while i < len(seq): …
   seq[i] … i += 1` becomes `for item in seq:` — but only when the index is used
   *solely* to subscript that one sequence and to increment, the sequence is not
@@ -54,7 +67,7 @@ without running it.
   predicate prover.  Nested loops come back as nested loops.
 - `polish/dead.py`: identical consecutive assignments (a flattening artefact)
   are collapsed.
-- Gates: `iocs` (27 checks), `yara` (22 checks) and `shapes` (flattened + inline-`__import__`
+- Gates: `iocs` (27 checks), `yara` (36 checks), `coverage` (20 checks) and `shapes` (flattened + inline-`__import__`
   reconstruction); unit suite `tests/unit/test_unflatten.py` pins nine cases,
   including the four near-misses that must be left untouched.
 - **Static expression evaluator** (`polish/evaluate.py`): a bounded interpreter
@@ -180,9 +193,22 @@ Unwrapping a packer is not the same as rebuilding a program.  This round is
 about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
-### Indicators, control flow, and a shippable rule
+### Indicators, control flow, a shippable rule, and proof
 
 ### Added
+- **YARA self-validation** (`triage/yara_check.py`): a strict parser for the
+  subset of YARA this tool writes (sections, meta entries, string definitions
+  with modifiers, escapes, condition references) plus a matcher, so every rule
+  is checked against the source it was built from before it is written.  A rule
+  that cannot match its own sample, references an undeclared string, has a
+  string under YARA's 4-byte minimum or an unbalanced condition is reported as
+  broken instead of shipped.  The verdict goes into the JSON report
+  (`yara_check`) and onto the console line.
+- **`--diff` coverage** (`triage/coverage.py`): compares the program as it came
+  out of the container with the cleaned one — definitions kept/lost/emptied,
+  statement counts per function, module names, imports, and how many string and
+  numeric literals survived (with the folded ones counted, not hidden).  Writes
+  `<name>.coverage.md`, records the verdict in the JSON, and prints one line.
 - **Loop idiom recovery** (`polish/loops.py`): `i = 0; while i < len(seq): …
   seq[i] … i += 1` becomes `for item in seq:` — but only when the index is used
   *solely* to subscript that one sequence and to increment, the sequence is not
@@ -212,7 +238,7 @@ without running it.
   predicate prover.  Nested loops come back as nested loops.
 - `polish/dead.py`: identical consecutive assignments (a flattening artefact)
   are collapsed.
-- Gates: `iocs` (27 checks), `yara` (22 checks) and `shapes` (flattened + inline-`__import__`
+- Gates: `iocs` (27 checks), `yara` (36 checks), `coverage` (20 checks) and `shapes` (flattened + inline-`__import__`
   reconstruction); unit suite `tests/unit/test_unflatten.py` pins nine cases,
   including the four near-misses that must be left untouched.
 - **Static expression evaluator** (`polish/evaluate.py`): a bounded interpreter

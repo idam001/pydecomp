@@ -35,6 +35,7 @@ def _strip_pydecomp_preamble(text: str) -> str:
 def deobfuscate(src_path: str, out_dir: str | None = None,
                 clean: bool = True, keep_artifacts: bool = False,
                 reports: bool = True, verify: bool = False, yara: bool = False,
+                diff: bool = False,
                 dry_run: bool = False, neutralize: bool = False,
                 fast: bool = False) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
@@ -72,10 +73,51 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         clean_notes = list(clean_notes) + guard_notes
 
     report = analyse_recovered(body, trace, raw=raw)
+    rule_text = None
+    if yara:
+        try:
+            import datetime as _dt
+            from ..triage.yara import build_rule
+            from ..triage.yara_check import summary as yara_summary, validate
+            rule_text = build_rule(name, report, digest=digest,
+                                   date=_dt.date.today().isoformat()) or None
+            if rule_text:
+                verdict = validate(rule_text, body.encode("utf-8", "surrogateescape"))
+                report["yara"] = True
+                report["yara_check"] = {key: value for key, value in verdict.items()}
+                print("   " + paint("rule       " + yara_summary(verdict),
+                                    GREEN if verdict["ok"] else YELLOW))
+            else:
+                print("   " + paint("rule       not written: no shippable indicator",
+                                    GREY))
+        except Exception:                                # noqa: BLE001
+            rule_text = None
+    coverage = None
+    if diff:
+        from ..triage.coverage import compare, render_markdown as render_cov, summary as cov_summary
+        coverage = compare(_strip_pydecomp_preamble(artifact.text), body)
+        report["coverage"] = {key: value for key, value in coverage.items()
+                              if key != "definitions"}
+        print("   " + paint("coverage   " + cov_summary(coverage), CYAN))
+        for line in render_cov(name, coverage).splitlines()[2:12]:
+            if line.strip():
+                print("   " + paint(line, GREY))
     head = render_report(report, trace, name, raw_size, digest)
     text = "\n".join(head) + "\n\n" + body
 
     path = save(text, src_path, out_dir)
+    if coverage is not None:
+        from ..triage.coverage import render_markdown as render_cov
+        try:
+            cov_path = os.path.join(os.path.dirname(os.path.abspath(path)),
+                                    os.path.splitext(os.path.basename(path))[0]
+                                    + ".coverage.md")
+            with open(cov_path, "w", encoding="utf-8") as handle:
+                handle.write(render_cov(name, coverage))
+            if reports:
+                report["coverage_path"] = cov_path
+        except OSError:
+            pass
     nbytes = len(text.encode("utf-8", "surrogateescape"))
     animate_bar("writing output", 0.4, GREEN, os.path.basename(path))
     animate_bar("verifying", 0.35, GREEN,
@@ -83,21 +125,24 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
 
     elapsed = time.time() - started
     side = {}
-    if not reports and yara:
-        # a rule only needs the sheet, not the whole report bundle
-        from ..triage.yara import write_rule
-        import datetime as _dt
-        folder = os.path.dirname(os.path.abspath(path))
-        stem = os.path.splitext(os.path.basename(path))[0]
-        rule = write_rule(os.path.join(folder, stem + ".yar"), name, report,
-                          digest=digest, date=_dt.date.today().isoformat())
-        if rule:
-            side["yara"] = rule
-            print("   " + paint("+ " + os.path.basename(rule), GREY))
     if reports:
-        report["yara"] = bool(yara)
         side = write_reports(path, report, trace, name, raw_size, digest, elapsed,
                              notes=clean_notes)
+    if coverage is not None:
+        cov_file = os.path.join(os.path.dirname(os.path.abspath(path)),
+                                os.path.splitext(os.path.basename(path))[0]
+                                + ".coverage.md")
+        if os.path.exists(cov_file):
+            side["coverage"] = cov_file
+    if rule_text and report.get("yara"):
+        try:
+            yara_path = os.path.join(os.path.dirname(os.path.abspath(path)),
+                                     os.path.splitext(os.path.basename(path))[0] + ".yar")
+            with open(yara_path, "w", encoding="utf-8") as handle:
+                handle.write(rule_text)
+            side["yara"] = yara_path
+        except OSError:
+            pass
     if keep_artifacts:
         folder = os.path.dirname(os.path.abspath(path))
         stem = os.path.splitext(os.path.basename(path))[0]
