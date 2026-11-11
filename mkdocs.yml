@@ -1,7 +1,7 @@
 site_name: pydecomp
 site_description: Static Python deobfuscator — recover readable source from packed, encoded or compiled Python without executing it.
 site_url: https://pydecomp.github.io/pydecomp/
-repo_url: https://github.com/pydecomp/pydecomp
+repo_url: https://github.com/idam001/pydecomp
 repo_name: pydecomp/pydecomp
 edit_uri: edit/main/docs/
 copyright: MIT licensed · built by Idam Emmanuel
@@ -94,5 +94,5 @@ validation:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/pydecomp/pydecomp
+      link: https://github.com/idam001/pydecomp
   generator: false

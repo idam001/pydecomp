@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Check [docs/faq.md](https://github.com/pydecomp/pydecomp/blob/main/docs/faq.md)
-        and [docs/cli.md](https://github.com/pydecomp/pydecomp/blob/main/docs/cli.md)
+        Check [docs/faq.md](https://github.com/idam001/pydecomp/blob/main/docs/faq.md)
+        and [docs/cli.md](https://github.com/idam001/pydecomp/blob/main/docs/cli.md)
         first — most questions are answered there.
 
   - type: textarea

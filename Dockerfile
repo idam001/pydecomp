@@ -26,7 +26,7 @@ FROM python:3.13-slim AS runtime
 
 LABEL org.opencontainers.image.title="pydecomp" \
       org.opencontainers.image.description="Static Python deobfuscator: recover source without executing the sample." \
-      org.opencontainers.image.source="https://github.com/pydecomp/pydecomp" \
+      org.opencontainers.image.source="https://github.com/idam001/pydecomp" \
       org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

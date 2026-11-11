@@ -74,4 +74,4 @@ CPython 3.13/Linux in under ten seconds:
 
 ## Licence
 
-MIT. See [LICENSE](https://github.com/pydecomp/pydecomp/blob/main/LICENSE).
+MIT. See [LICENSE](https://github.com/idam001/pydecomp/blob/main/LICENSE).

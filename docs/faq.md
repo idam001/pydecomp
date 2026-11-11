@@ -88,4 +88,4 @@ synthetic reproducer is better and becomes a fixture.
 
 Analysing files you own or are authorised to analyse is ordinarily fine; the
 rules differ by jurisdiction. pydecomp does not execute anything, and the authors
-accept no liability for misuse. See [LICENSE](https://github.com/pydecomp/pydecomp/blob/main/LICENSE).
+accept no liability for misuse. See [LICENSE](https://github.com/idam001/pydecomp/blob/main/LICENSE).

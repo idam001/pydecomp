@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability in pydecomp
-    url: https://github.com/pydecomp/pydecomp/security/advisories/new
+    url: https://github.com/idam001/pydecomp/security/advisories/new
     about: Report privately. Please do not open a public issue for anything exploitable.
   - name: Documentation
     url: https://pydecomp.github.io/pydecomp/
     about: Install, CLI reference, architecture, API and FAQ.
   - name: Usage question
-    url: https://github.com/pydecomp/pydecomp/discussions/categories/q-a
+    url: https://github.com/idam001/pydecomp/discussions/categories/q-a
     about: Ask in Discussions; the issue tracker is for reproducible problems.

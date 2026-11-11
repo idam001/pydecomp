@@ -52,4 +52,4 @@ write. Items move up when someone sends a sample that needs them.
 
 Open a **feature request** with the shape of the problem, or a **new sample**
 issue if pydecomp already fails on something real. Items with a reproducer and a
-test case jump the queue — see [GOVERNANCE.md](https://github.com/pydecomp/pydecomp/blob/main/GOVERNANCE.md).
+test case jump the queue — see [GOVERNANCE.md](https://github.com/idam001/pydecomp/blob/main/GOVERNANCE.md).

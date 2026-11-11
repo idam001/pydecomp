@@ -13,7 +13,7 @@ type: software
 license: MIT
 version: 1.0.0
 date-released: "2026-11-11"
-repository-code: "https://github.com/pydecomp/pydecomp"
+repository-code: "https://github.com/idam001/pydecomp"
 url: "https://pydecomp.github.io/pydecomp/"
 keywords:
   - deobfuscation
@@ -24,7 +24,7 @@ keywords:
   - marshal
 identifiers:
   - type: url
-    value: "https://github.com/pydecomp/pydecomp"
+    value: "https://github.com/idam001/pydecomp"
 authors:
   - family-names: "Emmanuel"
     given-names: "Idam"
@@ -38,7 +38,7 @@ preferred-citation:
   year: 2026
   version: 1.0.0
   license: MIT
-  repository-code: "https://github.com/pydecomp/pydecomp"
+  repository-code: "https://github.com/idam001/pydecomp"
 references:
   - type: software
     title: "CPython dis module"

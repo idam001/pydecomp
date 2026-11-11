@@ -24,6 +24,15 @@ without running it.
 
 ### Indicators, control flow, a shippable rule, and proof
 
+### Published
+- The repository is public at <https://github.com/idam001/pydecomp>.  All links
+  in the README, packaging metadata, docs, container labels and issue templates
+  now point at the real remote instead of the placeholder organisation.
+- A synthetic Stripe key in the indicators fixture was split into fragments so
+  GitHub push protection no longer treats the test data as a live credential;
+  the fixture still proves detection, and the literal is absent from every
+  commit (history rewritten before the first push, so nothing leaked).
+
 ### Added
 - **Fidelity guard** (`polish/fidelity.py`): the last check before a file is
   written.  The cleaned text is compared with the program as it came out of the
@@ -205,6 +214,15 @@ about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
 ### Indicators, control flow, a shippable rule, and proof
+
+### Published
+- The repository is public at <https://github.com/idam001/pydecomp>.  All links
+  in the README, packaging metadata, docs, container labels and issue templates
+  now point at the real remote instead of the placeholder organisation.
+- A synthetic Stripe key in the indicators fixture was split into fragments so
+  GitHub push protection no longer treats the test data as a live credential;
+  the fixture still proves detection, and the literal is absent from every
+  commit (history rewritten before the first push, so nothing leaked).
 
 ### Added
 - **Fidelity guard** (`polish/fidelity.py`): the last check before a file is

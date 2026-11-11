@@ -25,7 +25,7 @@ much safer to keep in the repository.
 ## Development setup
 
 ```bash
-git clone https://github.com/pydecomp/pydecomp.git
+git clone https://github.com/idam001/pydecomp.git
 cd pydecomp
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"

@@ -8,7 +8,7 @@ body:
       value: |
         pydecomp stays small on purpose. Requests that add a dependency, run the
         sample, or fetch anything over the network are out of scope — see
-        [GOVERNANCE.md](https://github.com/pydecomp/pydecomp/blob/main/GOVERNANCE.md).
+        [GOVERNANCE.md](https://github.com/idam001/pydecomp/blob/main/GOVERNANCE.md).
 
   - type: dropdown
     id: area

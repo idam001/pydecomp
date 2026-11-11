@@ -20,7 +20,7 @@ pydecomp --selftest
 ## From a checkout
 
 ```bash
-git clone https://github.com/pydecomp/pydecomp.git
+git clone https://github.com/idam001/pydecomp.git
 cd pydecomp
 pip install -e ".[dev]"
 python3 tools/run_gates.py     # nine gates, ~10 seconds

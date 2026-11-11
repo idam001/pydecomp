@@ -1,6 +1,6 @@
 # pydecomp
 
-**Static Python deobfuscator — by [Idam Emmanuel](https://github.com/idamemmanuel).**
+**Static Python deobfuscator — by [Idam Emmanuel](https://github.com/idam001).**
 Feed it a packed, encoded, mangled or partly-compiled Python file and get
 readable source back — without ever running the sample.
 
@@ -114,7 +114,7 @@ pipx install pydecomp                # isolated CLI
 From a checkout:
 
 ```bash
-git clone https://github.com/pydecomp/pydecomp.git
+git clone https://github.com/idam001/pydecomp.git
 cd pydecomp
 pip install -e ".[dev]"
 ```
