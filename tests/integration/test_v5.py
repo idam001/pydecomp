@@ -59,9 +59,10 @@ def sample_pyc(extra_source: str = "", version_header: bool = True) -> bytes:
 
 
 # ------------------------------------------------------------------ checks
-@check("version is 5.2.0")
+@check("version is declared once and exported")
 def _version():
-    eq(P.__version__, "8.1.0")
+    eq(P.__version__, __import__("pydecomp").limits.__version__)
+    ok(all(part.isdigit() for part in P.__version__.split(".")), P.__version__)
 
 
 @check("v4 helpers still present")

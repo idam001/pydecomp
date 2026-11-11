@@ -2,7 +2,7 @@
   {
     "case": "01_plain_pyc",
     "rc": 0,
-    "bytes": 527,
+    "bytes": 510,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -15,7 +15,7 @@
   {
     "case": "02_xor_strings",
     "rc": 0,
-    "bytes": 403,
+    "bytes": 400,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -28,7 +28,7 @@
   {
     "case": "03_chr_arrays",
     "rc": 0,
-    "bytes": 315,
+    "bytes": 338,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -41,7 +41,7 @@
   {
     "case": "04_b64_zlib_strings",
     "rc": 0,
-    "bytes": 345,
+    "bytes": 368,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -54,7 +54,7 @@
   {
     "case": "05_flattened",
     "rc": 0,
-    "bytes": 523,
+    "bytes": 546,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -67,7 +67,7 @@
   {
     "case": "06_opaque_dead",
     "rc": 0,
-    "bytes": 479,
+    "bytes": 741,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -80,7 +80,7 @@
   {
     "case": "07_mba",
     "rc": 0,
-    "bytes": 240,
+    "bytes": 223,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -93,7 +93,7 @@
   {
     "case": "08_exec_layered",
     "rc": 0,
-    "bytes": 531,
+    "bytes": 510,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -106,7 +106,7 @@
   {
     "case": "09_marshal_xor",
     "rc": 0,
-    "bytes": 527,
+    "bytes": 510,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -119,7 +119,7 @@
   {
     "case": "10_zip_bundle",
     "rc": 0,
-    "bytes": 527,
+    "bytes": 510,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,

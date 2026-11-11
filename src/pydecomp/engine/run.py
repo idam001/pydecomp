@@ -35,7 +35,8 @@ def _strip_pydecomp_preamble(text: str) -> str:
 def deobfuscate(src_path: str, out_dir: str | None = None,
                 clean: bool = True, keep_artifacts: bool = False,
                 reports: bool = True, verify: bool = False,
-                dry_run: bool = False, neutralize: bool = False) -> str | None:
+                dry_run: bool = False, neutralize: bool = False,
+                fast: bool = False) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
     started = time.time()
     src_path = os.path.abspath(os.path.expanduser(str(src_path).strip().strip("'\"")))
@@ -65,7 +66,7 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     body = _strip_pydecomp_preamble(artifact.text)
     clean_notes: list[str] = []
     if artifact.kind in ("source", "pseudo"):
-        body, clean_notes = polish_source(body, clean)
+        body, clean_notes = polish_source(body, clean, fast=fast)
     if neutralize:
         body, guard_notes = neutralize_source(body)
         clean_notes = list(clean_notes) + guard_notes

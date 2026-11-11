@@ -11,8 +11,8 @@ abstract: >-
   run is never presented as a success.
 type: software
 license: MIT
-version: 8.1.0
-date-released: 2026-10-31
+version: 1.0.0
+date-released: "2026-11-11"
 repository-code: "https://github.com/pydecomp/pydecomp"
 url: "https://pydecomp.github.io/pydecomp/"
 keywords:
@@ -36,7 +36,7 @@ preferred-citation:
     - family-names: "Emmanuel"
       given-names: "Idam"
   year: 2026
-  version: 8.1.0
+  version: 1.0.0
   license: MIT
   repository-code: "https://github.com/pydecomp/pydecomp"
 references:

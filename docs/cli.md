@@ -119,8 +119,9 @@ welcome band, the host's network and country, and the identity card.
    ═══════════════════════════════════════════════════════════════════════
    [•] Owner   : [Idam Emmanuel]
    [•] Tool    : [PYDECOMP]
+   [•] Edition : [THE ALMIGHTY]
    [•] Status  : [OPEN SOURCE]
-   [•] Version : [8.1.0]
+   [•] Version : [1.0.0]
    ═══════════════════════════════════════════════════════════════════════
 ```
 

@@ -1,7 +1,9 @@
 """v6 checks: the AST decompiler, its round-trip proof, and the fallback."""
 import ast
 import os
+import pathlib
 import py_compile
+import re
 import subprocess
 import sys
 import tempfile
@@ -22,8 +24,8 @@ def check(name, fn):
         print(f"FAIL  {name}\n      {type(exc).__name__}: {exc}")
 
 
-def eq(got, want):
-    assert got == want, f"got {got!r}, want {want!r}"
+def eq(got, want, what=""):
+    assert got == want, f"{what}: got {got!r}, want {want!r}"
 
 
 def ok(cond, msg=""):
@@ -73,7 +75,21 @@ def spin(n):
 
 
 def test_version():
-    eq(P.__version__, "8.1.0")
+    # the version lives in one place (src/pydecomp/limits.py) and every other
+    # surface has to agree with it - a gate that hard-codes the number would
+    # go red on every release, which teaches people to ignore gates
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    source = (ROOT / "src" / "pydecomp" / "limits.py").read_text()
+    declared = re.search(r'^__version__\s*=\s*"([^"]+)"', source, re.M).group(1)
+    eq(P.__version__, declared, "package agrees with limits.py")
+    ok(re.fullmatch(r"\d+\.\d+\.\d+", declared), declared)
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    ok(declared in pyproject or "dynamic" in pyproject,
+       "pyproject carries the version or reads it dynamically")
+    citation = (ROOT / "CITATION.cff").read_text()
+    eq(citation.count(f"version: {declared}") >= 1, True, "CITATION.cff agrees")
+    changelog = (ROOT / "CHANGELOG.md").read_text()
+    ok(f"[{declared}]" in changelog, "CHANGELOG has a section for it")
 
 
 def test_straight_line_roundtrip():

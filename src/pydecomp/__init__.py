@@ -142,7 +142,8 @@ from .lift.module import (
     lift_module,
 )
 from .lift.quality import ensure_parseable
-from .limits import EXEC_SINKS, MAX_DECOMPRESSED, MAX_LAYERS, MAX_SOURCE, __version__
+from .limits import (ALMIGHTY_PASSES, CODENAME, EXEC_SINKS, MAX_CHAINS,
+                     MAX_DECOMPRESSED, MAX_LAYERS, MAX_SOURCE, __version__)
 from .output.paths import phone_dir, unique_path
 from .output.save import save
 from .polish.apply import polish_source
@@ -482,6 +483,9 @@ __all__ = ["__version__"] + [
     "lift_module",
     "ensure_parseable",
     "EXEC_SINKS",
+    "ALMIGHTY_PASSES",
+    "CODENAME",
+    "MAX_CHAINS",
     "MAX_DECOMPRESSED",
     "MAX_LAYERS",
     "MAX_SOURCE",

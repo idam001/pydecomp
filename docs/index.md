@@ -36,7 +36,7 @@ $ pydecomp suspicious.py
    ꧁✿❀✿꧂─────────────────────────────────────────────────────────────꧁✿❀✿꧂
                     WELCOME TO IDAM EMMANUEL TOOLS
    [ NETWORK ] : <detected offline>      [ COUNTRY ] : <from the timezone>
-   [•] Owner   : [Idam Emmanuel]   [•] Version : [8.1.0]
+   [•] Owner   : [Idam Emmanuel]   [•] Version : [1.0.0]
 ```
 
 Every recovered file opens with one line and nothing else:

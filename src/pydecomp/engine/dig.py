@@ -16,6 +16,17 @@ from ..bytecode.magic import parse_pyc
 from ..bytecode.marshal_reader import parse_marshal_blob
 from ..core.util import _as_text, _payload_variants, looks_like_python
 from ..decoders.emoji import parses_as_python
+from ..decoders.pyarmor import describe as pyarmor_describe
+from ..decoders.pyarmor import detect as pyarmor_detect
+from ..decoders.pyarmor import recovery_note as pyarmor_note
+from ..decoders.hyperion import is_hyperion
+from ..decoders.hyperion import note as hyperion_note
+from ..decoders.hyperion import payload as hyperion_payload
+from ..decoders.pyinstaller import (carchive_entries, entry_script, is_carchive,
+                                    is_pyz, pyz_modules)
+from ..decoders.pyobfuscate_com import decrypt as pyobfuscate_decrypt
+from ..decoders.pyobfuscate_com import is_pyobfuscate
+from ..decoders.pyobfuscate_com import note as pyobfuscate_note
 from ..engine.artifact import Artifact, _score
 from ..engine.decode import deep_decode
 from ..engine.normalize import normalize, with_unknown_preamble
@@ -166,6 +177,53 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
         return None
     seen.add(digest)
 
+    if is_carchive(data):
+        entries = carchive_entries(data)
+        readable = [item for item in entries if item[1]]
+        trace.append(f"PyInstaller CArchive · {len(entries)} entries, "
+                     f"{len(readable)} readable")
+        best = None
+        # the program itself first, then the embedded module table
+        chosen = entry_script(entries)
+        ordered = ([chosen] if chosen else []) + [
+            (name, blob) for name, blob, typecode in entries[:16]
+            if blob and (typecode == "z" or blob[:4] == b"PYZ\x00")]
+        for name, blob in ordered:
+            if is_pyz(blob):
+                modules = pyz_modules(blob)
+                trace.append(f"PYZ archive {name} · {len(modules)} module(s)")
+                for module_name, module_blob in modules[:16]:
+                    inner = _digest_bytes(module_blob, trace, depth + 1, seen,
+                                          max_depth)
+                    if inner is None:
+                        continue
+                    if inner.is_source:
+                        return inner
+                    best = best or inner
+                continue
+            inner = _digest_bytes(blob, trace, depth + 1, seen, max_depth)
+            if inner is None:
+                continue
+            if inner.is_source:
+                return inner
+            best = best or inner
+        if best is not None:
+            return best
+
+    if is_pyz(data):
+        modules = pyz_modules(data)
+        trace.append(f"PYZ archive · {len(modules)} module(s)")
+        best = None
+        for module_name, module_blob in modules[:24]:
+            inner = _digest_bytes(module_blob, trace, depth + 1, seen, max_depth)
+            if inner is None:
+                continue
+            if inner.is_source:
+                return inner
+            best = best or inner
+        if best is not None:
+            return best
+
     if data[:2] == b"PK":
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -254,6 +312,56 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
 def dig(raw: bytes, name: str = "input", max_depth: int = 8) -> Artifact:
     """Universal entry point: figure out what this file is and unpack it."""
     trace: list[str] = []
+    # PyArmor: the bootstrap *is* the file, so it is emitted whole.  What the
+    # payload hides is described in the report rather than invented into the
+    # output.
+    early = _as_text(raw)
+    if early is None:
+        try:
+            early = raw.decode("utf-8", "surrogateescape")
+        except Exception:                                # noqa: BLE001
+            early = None
+    if early is not None and is_hyperion(early):
+        program, how = hyperion_payload(early)
+        if program:
+            trace.append(hyperion_note(how))
+            found = _follow_source(program, trace, 0, set(), max_depth)
+            if found is not None:
+                return found
+            text = program if program.endswith("\n") else program + "\n"
+            return Artifact(text, "source", trace, _score(text, "source"))
+
+    if early is not None and is_pyobfuscate(early):
+        plain, facts = pyobfuscate_decrypt(early)
+        trace.append(pyobfuscate_note(facts))
+        if plain:
+            found = _digest_bytes(plain, trace, 1, set(), max_depth)
+            if found is not None:
+                return found
+            text = _as_text(plain)
+            if text is not None:
+                found = _follow_source(text, trace, 0, set(), max_depth)
+                if found is not None:
+                    return found
+                text = text if text.endswith("\n") else text + "\n"
+                return Artifact(text, "source", trace, _score(text, "source"))
+
+    if early is not None:
+        armor = (pyarmor_detect(early)
+                 if "__pyarmor__" in early or "pyarmor_runtime" in early else None)
+        if armor:
+            facts = pyarmor_describe(armor["blob"])
+            trace.append(pyarmor_note(facts))
+            if armor["banner"]:
+                trace.append(f"build banner: {armor['banner']}")
+            if armor["runtime"]:
+                trace.append(f"runtime package: {armor['runtime']}"
+                             " (key material lives in its native library)")
+            if facts["strings"]:
+                trace.append("carved from payload: "
+                             + ", ".join(facts["strings"][:6]))
+            text = early if early.endswith("\n") else early + "\n"
+            return Artifact(text, "source", trace, _score(text, "source"))
     found = _digest_bytes(raw, trace, 0, set(), max_depth)
     if found is None:
         text = _as_text(raw)

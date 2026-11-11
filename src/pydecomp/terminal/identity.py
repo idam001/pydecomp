@@ -25,6 +25,7 @@ AUTHOR = "Idam Emmanuel"
 TOOL = "PYDECOMP"
 WELCOME = "WELCOME TO IDAM EMMANUEL TOOLS"
 STATUS = "OPEN SOURCE"
+CODENAME = "THE ALMIGHTY"
 HANDLE = "IDAM/EMMANUEL"
 SIGNATURE = "#[ Deobfuscated by idam Emmanuel ] only through pydecomp"
 
@@ -172,6 +173,7 @@ def card() -> list[tuple[str, str]]:
     return [
         ("Owner", author()),
         ("Tool", TOOL),
+        ("Edition", CODENAME),
         ("Status", STATUS),
         ("Version", __version__),
     ]

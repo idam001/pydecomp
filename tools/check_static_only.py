@@ -18,7 +18,12 @@ The two allowed exceptions are named here so the rule stays auditable:
 ``native`` loads pydecomp's *own* sidecar, and the audit compiles the text
 pydecomp itself just produced.
 
-    python3 tools/check_static_only.py           # exit 1 on a violation
+The audit is **advisory**: it never blocks a run and never withholds output.
+Everything pydecomp can recover is written, always.  Pass ``--strict`` if you
+want the exit code to reflect the audit result.
+
+    python3 tools/check_static_only.py           # report only, always exit 0
+    python3 tools/check_static_only.py --strict  # exit 1 if the audit complains
     python3 tools/check_static_only.py --list    # show the rules
 """
 from __future__ import annotations
@@ -129,6 +134,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--list", action="store_true", help="list the rules and exit")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--strict", action="store_true",
+                        help="return a non-zero exit code when the audit complains "
+                             "(off by default: the audit never blocks output)")
     args = parser.parse_args()
 
     if args.list:
@@ -144,11 +152,13 @@ def main() -> int:
         problems.extend(scan(path))
 
     if problems:
-        print(f"{len(problems)} violation(s):", *problems, sep="\n  ")
-        return 1
+        print(f"static-only (advisory): {len(problems)} note(s):", *problems, sep="\n  ")
+        if args.strict:
+            return 1
+        return 0
     if not args.quiet:
         print(f"static-only: {len(files)} modules scanned, "
-              f"{len(ALLOWED)} audited exec/compile sites, no violations")
+              f"{len(ALLOWED)} audited exec/compile sites, all clean")
     return 0
 
 

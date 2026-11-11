@@ -53,8 +53,9 @@ analysis (read offline — no sockets, no DNS), and the identity card.
    ═══════════════════════════════════════════════════════════════════════
    [•] Owner   : [Idam Emmanuel]
    [•] Tool    : [PYDECOMP]
+   [•] Edition : [THE ALMIGHTY]
    [•] Status  : [OPEN SOURCE]
-   [•] Version : [8.1.0]
+   [•] Version : [1.0.0]
    ═══════════════════════════════════════════════════════════════════════
 ```
 
@@ -63,6 +64,20 @@ detected values with `PYDECOMP_NETWORK` / `PYDECOMP_COUNTRY`, and rebrand a fork
 with `PYDECOMP_AUTHOR` / `PYDECOMP_SIGNATURE`.
 
 ---
+
+## Named packers it reconstructs
+
+| Container | What pydecomp does, statically |
+| --- | --- |
+| base64 / zlib / bz2 / lzma / hex / base85 / z85 / base58 / base45 / base91 / uu chains | peels 64 layers, 12 chains |
+| marshal / `.pyc` (`3.9 → 3.14`) | own marshal reader + lifter |
+| PyInstaller (CArchive + PYZ) | cookie → TOC → entries → PYZ → modules |
+| Cython `.so` / ELF payloads | tier-S exact / structural |
+| PyArmor 8–9 | bootstrap + build banner + carved payload strings, with an honest "the code objects stay encrypted" |
+| Hyperion | recovers the `__code__` program |
+| pyobfuscate.com (paid tier) | base85 → PBKDF2-SHA256 ×1e6 → AES-GCM, decrypted offline |
+| string tables + rotation | rotation replayed, accessors resolved, decoders folded |
+| MBA / opaque predicates / CFF / unicode aliases / dynamic builtins | rewritten to plain Python |
 
 ## Why this exists
 

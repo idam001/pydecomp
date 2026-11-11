@@ -42,6 +42,7 @@ nav:
       - Quick start: quickstart.md
       - CLI reference: cli.md
   - How it works:
+      - The Almighty engine: almighty.md
       - Architecture: architecture.md
       - Layers and containers: layers.md
       - Bytecode engine: bytecode.md

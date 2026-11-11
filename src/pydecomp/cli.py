@@ -76,6 +76,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="keep the untouched input bytes next to the output")
     ap.add_argument("--neutralize", action="store_true",
                     help="disable anti-VM/anti-debug/expiry guards in the output")
+    ap.add_argument("--fast", action="store_true",
+                    help="skip the expensive proofs (opaque-predicate solving); "
+                         "identical output for clean files")
     ap.add_argument("--deep", action="store_true",
                     help="spend more time: deeper decoder chains, more XOR keys")
     ap.add_argument("--version", action="version", version=f"pydecomp {__version__}")
@@ -103,13 +106,13 @@ def main(argv: list[str] | None = None) -> int:
                                        keep_artifacts=args.artifacts,
                                        reports=args.reports,
                                        verify=args.verify, dry_run=args.dry_run,
-                                       neutralize=args.neutralize)
+                                       neutralize=args.neutralize, fast=args.fast)
             return 0 if written else 1
         path = deobfuscate(args.file, args.out, clean=not args.no_clean,
                            keep_artifacts=args.artifacts,
                            reports=args.reports,
                            verify=args.verify, dry_run=args.dry_run,
-                           neutralize=args.neutralize)
+                           neutralize=args.neutralize, fast=args.fast)
         if path and args.verify:
             try:
                 try:
