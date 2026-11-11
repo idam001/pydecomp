@@ -11,9 +11,11 @@ from ..polish.apply import polish_source
 from ..polish.neutralize import neutralize_source
 from ..terminal.animate import animate_bar, animate_text, spinner, width
 from ..terminal.color import (
+    emit,
     BOLD, CYAN, GREEN, GREY, RED, WHITE,
     YELLOW, ellipsis, paint,
 )
+from ..terminal.locate import missing, resolve
 from ..terminal.panel import panel
 from ..triage.report import analyse_recovered, render_report, write_reports
 from ..triage.verify import _exec_dry_run
@@ -40,7 +42,18 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
                 fast: bool = False) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
     started = time.time()
-    src_path = os.path.abspath(os.path.expanduser(str(src_path).strip().strip("'\"")))
+    requested = str(src_path)
+    found = resolve(requested)
+    if found is None:
+        lines = missing(requested, out_dir)
+        emit(paint("✘", RED) + " " + paint(lines[0], RED))
+        for line in lines[1:]:
+            tint = CYAN if line.startswith(("did you mean", "paste:", "found")) else GREY
+            emit(paint("  " + line, tint))
+        return None
+    if os.path.abspath(os.path.expanduser(requested.strip().strip("'\""))) != found:
+        emit(paint("i", CYAN, BOLD) + " " + paint("using ", GREY) + paint(found, CYAN))
+    src_path = found
     if not os.path.isfile(src_path):
         print("   " + paint("✘", RED) + " " + paint(f"file not found: {src_path}", RED))
         return None
@@ -75,8 +88,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         if fidelity["kept"] == "unpacked":
             body = fidelity["text"]
             clean_notes = list(clean_notes) + [fidelity["reason"]]
-        print("   " + paint("fidelity   " + fidelity_summary(fidelity),
-                            GREEN if fidelity["kept"] == "cleaned" else YELLOW))
+        emit(paint("fidelity   " + fidelity_summary(fidelity),
+                   GREEN if fidelity["kept"] == "cleaned" else YELLOW))
     if neutralize:
         body, guard_notes = neutralize_source(body)
         clean_notes = list(clean_notes) + guard_notes
@@ -97,11 +110,10 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
                 verdict = validate(rule_text, body.encode("utf-8", "surrogateescape"))
                 report["yara"] = True
                 report["yara_check"] = {key: value for key, value in verdict.items()}
-                print("   " + paint("rule       " + yara_summary(verdict),
-                                    GREEN if verdict["ok"] else YELLOW))
+                emit(paint("rule       " + yara_summary(verdict),
+                           GREEN if verdict["ok"] else YELLOW))
             else:
-                print("   " + paint("rule       not written: no shippable indicator",
-                                    GREY))
+                emit(paint("rule       not written: no shippable indicator", GREY))
         except Exception:                                # noqa: BLE001
             rule_text = None
     coverage = None
@@ -110,10 +122,10 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         coverage = compare(_strip_pydecomp_preamble(artifact.text), body)
         report["coverage"] = {key: value for key, value in coverage.items()
                               if key != "definitions"}
-        print("   " + paint("coverage   " + cov_summary(coverage), CYAN))
+        emit(paint("coverage   " + cov_summary(coverage), CYAN))
         for line in render_cov(name, coverage).splitlines()[2:12]:
             if line.strip():
-                print("   " + paint(line, GREY))
+                emit(paint(line, GREY))
     head = render_report(report, trace, name, raw_size, digest)
     text = "\n".join(head) + "\n\n" + body
 
@@ -194,10 +206,20 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     rows.append(("elapsed", f"{elapsed:.2f}s", GREY))
     panel("DONE", rows, tint=GREEN)
     if side:
-        print("   " + paint("+ " + ", ".join(os.path.basename(v) for v in side.values()),
-                            GREY))
+        names = [os.path.basename(v) for v in side.values()]
+        from ..terminal.animate import width as _width
+        room = max(12, _width() - 5)
+        joined = ", ".join(names)
+        if len(joined) > room:
+            shown = names[0]
+            extra = len(names) - 1
+            joined = shown if not extra else f"{shown} +{extra} more"
+        emit(paint("+ " + joined, GREY))
     print()
-    print("   " + paint(f"cat '{path}'", GREY))
+    from ..terminal.animate import width as _w
+    from ..terminal.color import shorten_path
+    shown_path = shorten_path(path, max(12, _w() - 11))
+    emit(paint(f"cat '{shown_path}'", GREY))
     return path
 
 def deobfuscate_tree(target: str, out_dir: str | None = None, **kwargs) -> list[str]:

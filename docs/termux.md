@@ -177,6 +177,47 @@ So on Termux always start it as `python pydecomp.py …` (or use the launcher
 above) — do not `./pydecomp.py`. If you want the download itself to be
 executable, Termux ships a fixer: `termux-fix-shebang ~/tools/pydecomp.py`.
 
+## Why the layout looks different from the desktop screenshots
+
+Past versions sized every panel for a **minimum of 52 columns**.  A phone
+terminal is usually 40–50, so each box was drawn wider than the screen, wrapped,
+and the borders looked broken — that is the ragged frame you saw.
+
+The interface now measures the terminal it is actually in:
+
+| terminal width | what you get |
+|---|---|
+| 96+ columns | the full board: block-letter logo, ornament rules, one-line menu |
+| 60–95 | same board, logo replaced by a wordmark when the letters no longer fit |
+| 34–59 | compact board, menu descriptions on their own line instead of chopped |
+| under 34 | the layout still fits; nothing wraps, ever |
+
+Long progress lines and paths are trimmed from the middle, keeping what
+identifies them — `saved to  …/out/KAMRUL~4_deob.py` rather than a cut-off
+directory name.  Everything fits inside the width; nothing is ever drawn wider
+than the window.
+
+## "file not found" now tells you where to look
+
+If the name you paste is not where the shell is standing, you no longer just get
+a red line.  The tool searches the places a phone actually keeps downloads
+(`~/storage/downloads`, `~/storage/shared`, `~/Download`, `/sdcard/Download`,
+the current folder, your home) and answers with something you can paste:
+
+```
+   ✘ file not found: KAMRUL~4.py
+     looked in: /data/data/com.termux/files/home/tools
+     did you mean: /data/data/com.termux/files/home/storage/downloads/KAMRUL~4.py
+     paste: python pydecomp.py '~/storage/downloads/KAMRUL~4.py' -o ~/out
+```
+
+- If exactly one file has that name, it is used and announced:
+  `i using /…/storage/downloads/KAMRUL~4.py`.
+- If **two** files share the name it refuses to guess and lists them.
+- If you pointed at a folder, it says so and shows what is inside.
+
+So `KAMRUL~4.py` works from any folder once it is in a scans/listings location.
+
 ## If a command "does not exist"
 
 | what you typed | what happened | what to type |
@@ -185,6 +226,7 @@ executable, Termux ships a fixer: `termux-fix-shebang ~/tools/pydecomp.py`.
 | `pydecomp` → *command not found* | the alias was written to `~/.bashrc` in a shell that had already started | `source ~/.bashrc`, or open a new session |
 | `./pydecomp.py` → *bad interpreter* | Android has no `/usr/bin/env` | `python pydecomp.py` |
 | `python pydecomp.py` shows the **menu** instead of a result | no path was given, which is how you ask for the menu | `python pydecomp.py sample.py -o ~/out` |
+| `✘ file not found: KAMRUL~4.py` | the shell was in `~/tools`, the file is in the downloads folder | `python pydecomp.py '~/storage/downloads/KAMRUL~4.py' -o ~/out` — or just re-run: the tool now offers the match |
 
 ## Flags that matter on a phone
 

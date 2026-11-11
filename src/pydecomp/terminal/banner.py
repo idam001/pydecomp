@@ -14,7 +14,7 @@ from ..limits import __version__
 from ..terminal import identity
 from ..terminal.animate import clear, width
 from ..terminal.color import (BOLD, CYAN, GREEN, GREY, MAGENTA, RED, RED_BG, WHITE,
-                              YELLOW, paint, vlen)
+                              YELLOW, clip, paint, vlen)
 
 # 5 rows x 5 columns per glyph, joined with one space: 47 columns for PYDECOMP.
 GLYPHS = {
@@ -43,11 +43,23 @@ def logo() -> list[str]:
 LOGO = logo()
 
 
+def _usable() -> int:
+    """Columns we may draw in, after the three-space left margin."""
+    return max(20, width() - 3)
+
+
+def _fit(text: str, room: int | None = None) -> str:
+    """Clip painted text to the usable width — a phone must never wrap a panel."""
+    return clip(text, _usable() if room is None else room)
+
+
 def _rule(fill: str = "─") -> str:
-    """An ornament rule that fits the terminal."""
-    room = max(20, min(width() - 3, 78))
-    inner = max(4, room - 2 * vlen(ORNAMENT) - 4)
-    return ORNAMENT + fill * inner + ORNAMENT
+    """An ornament rule that fits the terminal, ornaments dropped when narrow."""
+    room = min(_usable(), 78)
+    if room >= 2 * vlen(ORNAMENT) + 8:
+        inner = max(4, room - 2 * vlen(ORNAMENT) - 4)
+        return ORNAMENT + fill * inner + ORNAMENT
+    return fill * max(4, room)
 
 
 def _centre(text: str, room: int) -> str:
@@ -80,28 +92,45 @@ def _card_lines() -> list[str]:
             for label, value in rows]
 
 
+def _wordmark() -> None:
+    """The logo when there is room for it, a plain wordmark when there is not."""
+    widest = max(vlen(line) for line in LOGO)
+    if _usable() >= widest:
+        for line, tint in zip(LOGO, LOGO_TINT):
+            print("   " + paint(line, tint, BOLD))
+        return
+    compact = (paint("PYDECOMP", CYAN, BOLD)
+               + paint(f"  v{__version__}", GREY)
+               + paint("  ·  ", GREY)
+               + paint(identity.author(), WHITE, BOLD))
+    print("   " + _fit(compact))
+
+
 def _print_common(tagline: str) -> None:
     print("   " + paint(_rule(), GREEN))
     print()
-    for line, tint in zip(LOGO, LOGO_TINT):
-        print("   " + paint(line, tint, BOLD))
+    _wordmark()
     print()
     print("   " + paint(_rule(), GREEN))
-    room = max(24, min(width() - 3, 78)) - 2 * vlen(ORNAMENT)
+    room = min(_usable(), 78) - 2 * vlen(ORNAMENT) if _usable() >= 2 * vlen(ORNAMENT) + 8 \
+        else _usable()
     band = _centre("  " + identity.WELCOME + "  ", room)
     print("   " + paint(band, WHITE, BOLD, RED_BG))
     print()
     for line in _identity_lines():
-        print("   " + line)
+        print("   " + _fit(line))
     print("   " + paint("═" * room, GREEN))
     for line in _card_lines():
-        print("   " + line)
+        print("   " + _fit(line))
     print("   " + paint("═" * room, GREEN))
-    print("   " + paint(f" v{__version__}", GREY)
-          + paint("  ·  ", GREY)
-          + paint(tagline, YELLOW)
-          + paint("  ·  by ", GREY)
-          + paint(identity.author(), CYAN, BOLD))
+    if _usable() >= 58:
+        tail = (paint(f" v{__version__}", GREY) + paint("  ·  ", GREY)
+                + paint(tagline, YELLOW) + paint("  ·  by ", GREY)
+                + paint(identity.author(), CYAN, BOLD))
+    else:
+        tail = (paint(f" v{__version__}", GREY) + paint("  ·  by ", GREY)
+                + paint(identity.author(), CYAN, BOLD))
+    print("   " + _fit(tail))
     print()
 
 
@@ -117,8 +146,8 @@ def header(do_clear: bool = True) -> None:
         clear()
     print()
     _print_common("samples are analysed, never executed")
-    print("   " + paint("send a sample the engine cannot peel → ", GREY)
-          + paint("issues", CYAN, BOLD))
+    print("   " + _fit(paint("send a sample the engine cannot peel → ", GREY)
+                      + paint("issues", CYAN, BOLD)))
     print()
 
 

@@ -24,6 +24,20 @@ without running it.
 
 ### Indicators, control flow, a shippable rule, and proof
 
+### Fixed on phones
+- **The interface now fits the terminal it is drawn in.** Panels were sized for a
+  52-column minimum — wider than a Termux window — so every box wrapped and the
+  borders looked broken.  The width floor is now 34, `COLUMNS` is honoured, the
+  logo falls back to a wordmark, menu descriptions move to their own line, and
+  every informational line is clipped to the window.  A new `terminal` gate
+  renders the banner, menu and result panel at nine widths from 34 to 130 and
+  fails on any overflow or ragged box.
+- **`file not found` is now an answer, not a dead end.** The tool expands `~`,
+  searches the folders a phone keeps downloads in, and prints the matching path
+  with a pasteable command.  One unambiguous match is used and announced; two
+  are listed rather than guessed.
+- Long paths are trimmed from the middle, so `saved to` keeps the filename.
+
 ### Published
 - The repository is public at <https://github.com/idam001/pydecomp>.  All links
   in the README, packaging metadata, docs, container labels and issue templates
@@ -214,6 +228,20 @@ about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
 ### Indicators, control flow, a shippable rule, and proof
+
+### Fixed on phones
+- **The interface now fits the terminal it is drawn in.** Panels were sized for a
+  52-column minimum — wider than a Termux window — so every box wrapped and the
+  borders looked broken.  The width floor is now 34, `COLUMNS` is honoured, the
+  logo falls back to a wordmark, menu descriptions move to their own line, and
+  every informational line is clipped to the window.  A new `terminal` gate
+  renders the banner, menu and result panel at nine widths from 34 to 130 and
+  fails on any overflow or ragged box.
+- **`file not found` is now an answer, not a dead end.** The tool expands `~`,
+  searches the folders a phone keeps downloads in, and prints the matching path
+  with a pasteable command.  One unambiguous match is used and announced; two
+  are listed rather than guessed.
+- Long paths are trimmed from the middle, so `saved to` keeps the filename.
 
 ### Published
 - The repository is public at <https://github.com/idam001/pydecomp>.  All links

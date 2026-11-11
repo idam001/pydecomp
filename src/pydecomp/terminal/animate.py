@@ -17,12 +17,28 @@ def clear() -> None:
         sys.stdout.write("\033[2J\033[H")
         sys.stdout.flush()
 
+MIN_WIDTH = 34          # narrower than this and even the menu stops being a box
+MAX_WIDTH = 96
+
+
 def width(default: int = 78) -> int:
-    try:
-        cols = os.get_terminal_size().columns
-    except OSError:
-        cols = default
-    return max(52, min(cols, 96))
+    """Columns available, honest about phones.
+
+    ``COLUMNS`` wins when the shell exports it (and it is how the narrow-layout
+    tests drive this), then the real tty, then a sane default.  The floor used to
+    be 52, which is *wider* than a phone terminal — every panel then wrapped and
+    the borders looked broken.
+    """
+    cols = 0
+    env = os.environ.get("COLUMNS", "").strip()
+    if env.isdigit() and int(env) > 0:
+        cols = int(env)
+    if not cols:
+        try:
+            cols = os.get_terminal_size().columns
+        except OSError:
+            cols = default
+    return max(MIN_WIDTH, min(cols, MAX_WIDTH))
 
 def rule(ch: str = "─", tint: str = GREY) -> None:
     print("   " + paint(ch * (width() - 6), tint))

@@ -31,21 +31,68 @@ def ellipsis(text: str, limit: int) -> str:
     text = str(text)
     return text if len(text) <= limit else text[: max(0, limit - 1)] + "…"
 
+def clip(text: str, room: int) -> str:
+    """Cut painted text to ``room`` visible columns without breaking escape codes."""
+    if room <= 0:
+        return ""
+    if vlen(text) <= room:
+        return text
+    out, visible, index, coloured = [], 0, 0, False
+    while index < len(text):
+        match = ANSI_RE.match(text, index)
+        if match:
+            out.append(match.group(0))
+            coloured = True
+            index = match.end()
+            continue
+        if visible >= room - 1:
+            break
+        out.append(text[index])
+        visible += 1
+        index += 1
+    out.append("…")
+    if coloured:
+        out.append(RESET)
+    return "".join(out)
+
+
+def shorten_path(path: str, room: int) -> str:
+    """Keep the part of a path that identifies the file when space is short."""
+    path = str(path)
+    if len(path) <= room:
+        return path
+    pieces = [piece for piece in path.split(os.sep) if piece]
+    keep: list[str] = []
+    for piece in reversed(pieces):
+        trial = os.sep.join([piece, *keep])
+        if keep and len(trial) + 2 > room:
+            break
+        keep.insert(0, piece)
+    candidate = "…" + os.sep + os.sep.join(keep) if keep else path
+    return candidate if len(candidate) <= room else ellipsis(path, room)
+
+
 def vlen(text: str) -> int:
     """Visible length of a string that may contain ANSI colour codes."""
     return len(ANSI_RE.sub("", text))
 
+def emit(painted: str, indent: int = 3) -> None:
+    """Print one line that fits the terminal — a phone must never wrap it."""
+    from ..terminal.animate import width
+    print(" " * indent + clip(painted, max(12, width() - indent)))
+
+
 def step(msg: str) -> None:
-    print("   " + paint("▸", CYAN) + " " + msg)
+    emit(paint("▸", CYAN) + " " + msg)
 
 def ok(msg: str) -> None:
-    print("   " + paint("✔", GREEN) + " " + msg)
+    emit(paint("✔", GREEN) + " " + msg)
 
 def warn(msg: str) -> None:
-    print("   " + paint("!", YELLOW) + " " + msg)
+    emit(paint("!", YELLOW) + " " + msg)
 
 def die(msg: str, code: int = 1) -> None:
-    print("   " + paint("✘", RED) + " " + msg)
+    emit(paint("✘", RED) + " " + msg)
     raise SystemExit(code)
 
 def ask(prompt: str, default: str = "") -> str:

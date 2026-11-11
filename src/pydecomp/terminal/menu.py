@@ -9,29 +9,47 @@ from ..terminal.animate import clear, width
 from ..terminal.banner import header
 from ..terminal.color import (
     BOLD, GREEN, GREY, MAGENTA, RED, WHITE,
-    YELLOW, ellipsis, paint, vlen,
+    YELLOW, clip, ellipsis, paint, vlen,
 )
 
 def menu() -> None:
     box_w = width() - 3
+    inner = max(4, box_w - 3)
     top = "╭─ MAIN MENU "
     print("   " + paint(top + "─" * max(0, box_w - len(top) - 1) + "╮", MAGENTA, BOLD))
-    name_w = 24 if box_w >= 72 else 16
+    # One line per option when there is room; on a phone the description drops to
+    # its own line instead of being chopped in the middle of a word.
+    stacked = inner < 62
+    name_w = max(10, inner - 6) if stacked else (24 if box_w >= 72 else 16)
     rows = [
-        ("1", "Deobfuscate a script", "peel every layer  ·  save one file", True),
-        ("2", "Cython module (.so)", "rebuild the source from a compiled module", True),
-        ("3", "ELF binary", "find python payloads inside a binary", True),
-        ("0", "Exit", "", False),
+        ("1", "Deobfuscate a script", "peel every layer  ·  save one file",
+         "peel layers, save one file", True),
+        ("2", "Cython module (.so)", "rebuild the source from a compiled module",
+         "source from a .so", True),
+        ("3", "ELF binary", "find python payloads inside a binary",
+         "payloads inside a binary", True),
+        ("0", "Exit", "", "", False),
     ]
-    for key, name, desc, hot in rows:
-        room = box_w - 3 - (3 + 2 + name_w + 1)     # leave one space before the desc
-        shown_desc = ellipsis(desc, room) if room >= 8 else ""
-        body = (paint(f"[{key}]", GREEN if hot else GREY, BOLD) + "  "
-                + paint(f"{ellipsis(name, name_w):<{name_w}}", WHITE, BOLD if hot else "")
-                + (" " + paint(shown_desc, GREY) if shown_desc else ""))
-        pad = " " * max(0, box_w - 3 - vlen(body))
+
+    def row(body: str) -> None:
+        body = clip(body, inner)
+        pad = " " * max(0, inner - vlen(body))
         print("   " + paint("│ ", MAGENTA) + body + pad + paint("│", MAGENTA))
+
+    for key, name, desc, short, hot in rows:
+        body = (paint(f"[{key}]", GREEN if hot else GREY, BOLD) + "  "
+                + paint(f"{ellipsis(name, name_w):<{name_w}}", WHITE, BOLD if hot else ""))
+        if stacked:
+            row(body.rstrip())
+            if desc:
+                row(paint("     " + ellipsis(short or desc, inner - 5), GREY))
+            continue
+        room = inner - vlen(body) - 1
+        if desc and room >= 8:
+            body += " " + paint(ellipsis(desc, room), GREY)
+        row(body)
     print("   " + paint("╰" + "─" * (box_w - 2) + "╯", MAGENTA, BOLD))
+
 
 def ask_file(hint: str = "", label: str = "script") -> str | None:
     print("   " + paint(f"paste the path of the {label}, then Enter", GREY))

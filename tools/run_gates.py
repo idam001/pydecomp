@@ -43,6 +43,7 @@ SUITE = {
     "coverage": (GATES / "test_coverage.py", {}, False),
     "fidelity": (GATES / "test_fidelity.py", {}, False),
     "singlefile": (GATES / "test_singlefile.py", {}, False),
+    "terminal": (GATES / "test_terminal.py", {}, False),
     "identity": (GATES / "test_identity.py", {}, False),
     "probes": (GATES / "test_probes.py", {}, False),
     "native": (GATES / "test_native.py", {}, True),

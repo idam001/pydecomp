@@ -91,7 +91,16 @@ def deobfuscate_native(src_path: str, out_dir: str | None = None,
     started = time.time()
     src_path = os.path.abspath(os.path.expanduser(str(src_path).strip().strip("'\"")))
     if not os.path.isfile(src_path):
-        print("   " + paint("✘", RED) + " " + paint(f"file not found: {src_path}", RED))
+        from ..terminal.locate import missing, resolve
+        found = resolve(src_path)
+        if found:
+            src_path = found
+        else:
+            lines = missing(src_path)
+            print("   " + paint("✘", RED) + " " + paint(lines[0], RED))
+            for line in lines[1:]:
+                print("   " + paint("  " + line, GREY))
+            return False
         return None
 
     name = os.path.basename(src_path)
