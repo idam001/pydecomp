@@ -54,14 +54,14 @@
   {
     "case": "05_flattened",
     "rc": 0,
-    "bytes": 546,
+    "bytes": 375,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
     "endpoint": false,
     "marker": false,
     "decoder_calls": 1,
-    "flat_leftover": 3,
+    "flat_leftover": 0,
     "score": 2
   },
   {

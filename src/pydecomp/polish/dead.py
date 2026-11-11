@@ -39,6 +39,69 @@ def _module_is_dynamic(tree) -> bool:
     return False
 
 
+def _names_touched(stmt) -> set:
+    """Every name a statement reads or writes - cheap enough to precompute."""
+    names = set()
+    for sub in _ast.walk(stmt):
+        if isinstance(sub, _ast.Name):
+            names.add(sub.id)
+    return names
+
+
+def _drop_duplicate_assignments(tree) -> int:
+    """`_acc = 0` straight after the same `_acc = 0` is a rewrite artefact.
+
+    A flattened block can re-emit the initialisers that already ran before the
+    dispatcher.  An assignment is only dropped when an identical one ran earlier
+    in the same block and nothing in between touched the name.
+    """
+    removed = 0
+
+    def sweep(body):
+        nonlocal removed
+        targets = [stmt.targets[0].id for stmt in body
+                   if isinstance(stmt, _ast.Assign) and len(stmt.targets) == 1
+                   and isinstance(stmt.targets[0], _ast.Name)]
+        if len(targets) == len(set(targets)):
+            pass                                   # nothing repeats: just recurse
+        else:
+            touched = [_names_touched(stmt) for stmt in body]
+            removed_here = set()
+            for index, stmt in enumerate(body):
+                if not isinstance(stmt, _ast.Assign):
+                    continue
+                if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], _ast.Name):
+                    continue
+                name = stmt.targets[0].id
+                dump = _ast.dump(stmt.value)
+                for earlier in range(index - 1, -1, -1):
+                    if earlier in removed_here:
+                        continue
+                    other = body[earlier]
+                    if isinstance(other, _ast.Assign) and len(other.targets) == 1 \
+                            and isinstance(other.targets[0], _ast.Name) \
+                            and other.targets[0].id == name \
+                            and _ast.dump(other.value) == dump:
+                        removed_here.add(index)
+                        removed += 1
+                        break
+                    if name in touched[earlier]:
+                        break
+            if removed_here:
+                body[:] = [stmt for index, stmt in enumerate(body)
+                           if index not in removed_here]
+        for stmt in body:
+            for field in ("body", "orelse", "finalbody"):
+                inner = getattr(stmt, field, None)
+                if isinstance(inner, list) and inner and isinstance(inner[0], _ast.AST):
+                    sweep(inner)
+            for handler in getattr(stmt, "handlers", []) or []:
+                sweep(handler.body)
+
+    sweep(tree.body)
+    return removed
+
+
 def _drop_bare_constants(tree) -> int:
     """A statement that is just `None` / `0` / `True` does nothing at runtime."""
     removed = 0
@@ -152,4 +215,5 @@ def _strip_dead(tree) -> int:
     sweep(tree.body)
     removed += _drop_unused_literals(tree)
     removed += _drop_bare_constants(tree)
+    removed += _drop_duplicate_assignments(tree)
     return removed
