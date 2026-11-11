@@ -75,7 +75,26 @@ def main():
         ok((report.get("fidelity") or {}).get("kept") == "cleaned",
            "recovered output is the cleaned program, not a rollback")
 
-    # 4. downloading it twice gives the same bytes — no build drift
+    # 4. with no file argument the menu must open, and close on 0
+    menu = subprocess.run([sys.executable, BUNDLE, "--no-color", "--no-anim"],
+                          input="0\n", capture_output=True, text=True,
+                          cwd=work, env={**os.environ, "NO_COLOR": "1", "TERM": "dumb"})
+    ok(menu.returncode == 0, "menu exits 0 on option 0")
+    ok("MAIN MENU" in menu.stdout, "menu renders")
+    ok("[1]" in menu.stdout and "[0]" in menu.stdout, "menu lists its options")
+
+    # 5. the menu honours -o for the whole session
+    menu_out = os.path.join(work, "menu_out")
+    driven = subprocess.run([sys.executable, BUNDLE, "-o", menu_out, "--no-color",
+                             "--no-anim"], input=f"1\n{sample}\n0\n",
+                            capture_output=True, text=True, cwd=work,
+                            env={**os.environ, "NO_COLOR": "1", "TERM": "dumb"})
+    ok(driven.returncode == 0, "menu option 1 completes")
+    ok(os.path.isdir(menu_out) and any(n.endswith("_deob.py")
+                                       for n in os.listdir(menu_out)),
+       "menu wrote the result to -o, not next to the sample")
+
+    # 6. downloading it twice gives the same bytes — no build drift
     first = hashlib.sha256(open(BUNDLE, "rb").read()).hexdigest()
     check = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_single.py"),
                             "--check"], capture_output=True, text=True)
@@ -86,7 +105,7 @@ def main():
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1
-    print("\n10 checks passed — all good")
+    print("\n14 checks passed — all good")
     return 0
 
 

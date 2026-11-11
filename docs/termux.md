@@ -102,6 +102,90 @@ What you get in `~/out`:
 | `suspicious_deob.yar` | YARA rule built from the recovered indicators |
 | `suspicious_deob.coverage.md` | what was kept versus the unpacked original |
 
+## The main menu
+
+With **no file argument** the tool opens its menu instead of taking a path:
+
+```bash
+python ~/tools/pydecomp.py
+```
+
+```
+   ╭─ MAIN MENU ─────────────────────────────────────────────────────────────╮
+   │ [1]  Deobfuscate a script     peel every layer  ·  save one file        │
+   │ [2]  Cython module (.so)      rebuild the source from a compiled module │
+   │ [3]  ELF binary               find python payloads inside a binary      │
+   │ [0]  Exit                                                               │
+   ╰─────────────────────────────────────────────────────────────────────────╯
+   ❯ option
+```
+
+Type `1`, Enter, then paste the path of the sample and press Enter again.  The
+menu loops until you choose `0`.
+
+Two things worth knowing about menu mode:
+
+- **Results land next to the sample** unless you pass `-o`.  Pass it on the
+  command line — the menu keeps it for the whole session:
+
+  ```bash
+  python ~/tools/pydecomp.py -o ~/out      # then pick 1 and paste a path
+  ```
+
+- Menu mode asks for the sample path; the one-shot form takes it as an argument
+  and never prompts, which is what you want for scripting:
+
+  ```bash
+  python ~/tools/pydecomp.py sample.py -o ~/out --no-anim
+  ```
+
+## Making `pydecomp` a real command
+
+An `alias` only exists in the shell that defined it, and only after you load it.
+After adding `alias pydecomp='python ~/tools/pydecomp.py'` to `~/.bashrc` you
+must either open a new Termux session or run:
+
+```bash
+source ~/.bashrc
+pydecomp                 # now this is the menu
+```
+
+Rather than rely on an alias, install it properly — pip writes a launcher with
+the correct Termux interpreter path, so the plain command works forever:
+
+```bash
+pkg install git
+python -m pip install "git+https://github.com/idam001/pydecomp.git"
+pydecomp --selftest      # a real command, from any folder
+```
+
+Or write your own launcher (correct for Termux, where there is no `/usr/bin`):
+
+```bash
+mkdir -p $PREFIX/bin
+cat > $PREFIX/bin/pydecomp <<'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+exec python "$HOME/tools/pydecomp.py" "$@"
+EOF
+chmod +x $PREFIX/bin/pydecomp
+pydecomp --selftest
+```
+
+Note the shebang: the single file starts with `#!/usr/bin/env python3`, which is
+right on Linux and macOS but wrong on Android, where `/usr/bin` does not exist.
+So on Termux always start it as `python pydecomp.py …` (or use the launcher
+above) — do not `./pydecomp.py`. If you want the download itself to be
+executable, Termux ships a fixer: `termux-fix-shebang ~/tools/pydecomp.py`.
+
+## If a command "does not exist"
+
+| what you typed | what happened | what to type |
+|---|---|---|
+| `python pydecomp` | Python was told to open a file called `pydecomp`, which is not there (the name ends in `.py`) | `python pydecomp.py` |
+| `pydecomp` → *command not found* | the alias was written to `~/.bashrc` in a shell that had already started | `source ~/.bashrc`, or open a new session |
+| `./pydecomp.py` → *bad interpreter* | Android has no `/usr/bin/env` | `python pydecomp.py` |
+| `python pydecomp.py` shows the **menu** instead of a result | no path was given, which is how you ask for the menu | `python pydecomp.py sample.py -o ~/out` |
+
 ## Flags that matter on a phone
 
 | flag | why |
