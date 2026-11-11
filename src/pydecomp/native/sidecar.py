@@ -2417,7 +2417,11 @@ def analyse_native(path: str, out_dir: str, mode: str = "auto"):
             notes.append(f"{label}: no source recovered")
             continue
         target = os.path.join(out_dir, f"{stem}__{name}_deob.py")
-        open(target, "w", encoding="utf-8").write(artifact.text + "\n")
+        # same one-line signature as every other recovery
+        body = artifact.text
+        if not body.startswith("#[ Deobfuscated by"):
+            body = _stamp_line() + "\n\n" + body
+        open(target, "w", encoding="utf-8").write(body + "\n")
         written.append(target)
     report = elf_report(img, findings, written, notes)
     if payload_rows:

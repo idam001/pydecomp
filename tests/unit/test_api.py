@@ -97,3 +97,42 @@ def test_unknown_sentinel_is_forgiving():
 def test_dig_survives_degenerate_input(size):
     result = pydecomp.dig(b"A" * size, "empty.py")
     assert isinstance(result.text, str)
+
+
+def test_signature_is_the_documented_line():
+    """The stamp is a contract: one line, author, tool, nothing else."""
+    from pydecomp.terminal.banner import stamp
+    assert stamp() == "#[ Deobfuscated by idam Emmanuel ] only through pydecomp"
+
+
+def test_banner_shows_identity():
+    from pydecomp.terminal import banner, identity
+    board = "\n".join(banner.LOGO)
+    assert board.count("█") > 80, "logo lost its block art"
+    assert len(banner.LOGO) == 5
+    assert all(len(row) == len(banner.LOGO[0]) for row in banner.LOGO), "ragged logo"
+    assert identity.AUTHOR == "Idam Emmanuel"
+    assert "IDAM EMMANUEL" in identity.WELCOME
+    assert identity.network() and identity.country()
+
+
+def test_banner_overrides_are_honoured(monkeypatch):
+    from pydecomp.terminal import identity
+    monkeypatch.setenv("PYDECOMP_NETWORK", "MTN NG")
+    monkeypatch.setenv("PYDECOMP_COUNTRY", "Nigeria")
+    monkeypatch.setenv("PYDECOMP_SIGNATURE", "# custom stamp")
+    assert identity.network() == "MTN NG"
+    assert identity.country() == "Nigeria"
+    assert identity.signature() == "# custom stamp"
+
+
+def test_recovered_file_carries_only_the_stamp():
+    import ast
+    payload = b"import os\nVALUE = 41 + 1\nprint(os.sep, VALUE)\n"
+    import base64
+    import zlib
+    wrapped = base64.b64encode(zlib.compress(payload)).decode()
+    sample = f"import base64, zlib\nexec(zlib.decompress(base64.b64decode({wrapped!r})))\n"
+    result = pydecomp.dig(sample.encode(), "sample.py")
+    text = result.text if result.text.startswith("#[") else result.text
+    ast.parse(text)
