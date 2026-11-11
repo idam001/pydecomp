@@ -33,9 +33,11 @@ def selftest() -> int:
         panel("SELFTEST", rows, tint=RED)
         return 1
     embedded = globals().get("_EMBEDDED_NATIVE") is not None
-    rows.append(("native", f"{getattr(native, '__version__', '?')} "
-                 f"({'embedded' if embedded else os.path.dirname(native.__file__)})",
-                 GREEN))
+    # In the single-file bundle the sidecar is a module-table entry, so it has no
+    # __file__; saying so is the honest answer, crashing is not.
+    location = getattr(native, "__file__", None)
+    where = "embedded" if embedded or not location else os.path.dirname(location)
+    rows.append(("native", f"{getattr(native, '__version__', '?')} ({where})", GREEN))
     rows.append(("menu 1", "scripts: loaders, names, ciphers, marshal, pyc, IOCs", GREEN))
     rows.append(("menu 2", "Cython: tables, tiers S/B/A, payloads", GREEN))
     rows.append(("menu 3", "ELF: marshal, pyc, zip, PyInstaller, zlib/bz2/xz", GREEN))

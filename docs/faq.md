@@ -66,7 +66,7 @@ docstrings. It does not decompile machine code into C.
 
 The package is ~14,200 lines across 90 files; the single file stores them
 zlib-compressed and base85-encoded, then serves them through an import hook.
-~199 KB instead of ~508 KB of readable source, with identical behaviour.
+~273 KB instead of ~508 KB of readable source, with identical behaviour.
 
 ## Does it need the interpreter version of the sample?
 

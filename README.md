@@ -120,9 +120,12 @@ You lose a little tidiness, never the recovered script.
 
 ## Install
 
+> The PyPI name `pydecomp` is taken by an **unrelated** project, so
+> `pip install pydecomp` gives you the wrong tool. Install from Git:
+
 ```bash
-pip install pydecomp                 # from PyPI
-pipx install pydecomp                # isolated CLI
+pip install "git+https://github.com/idam001/pydecomp.git"
+pipx install "git+https://github.com/idam001/pydecomp.git"   # isolated CLI
 ```
 
 From a checkout:
@@ -136,8 +139,8 @@ pip install -e ".[dev]"
 **No pip at all?** Build the single file and copy it anywhere:
 
 ```bash
-python3 tools/build_single.py           # -> dist/pydecomp.py (~199 KB)
-scp dist/pydecomp.py phone:/sdcard/       # Termux: python3 pydecomp.py sample.py
+python3 tools/build_single.py           # -> dist/pydecomp.py (~273 KB)
+scp dist/pydecomp.py phone:/sdcard/     # Termux guide: docs/termux.md
 ```
 
 Requires CPython 3.9 or newer. Nothing else. The single-file build carries the

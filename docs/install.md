@@ -3,11 +3,15 @@
 pydecomp has **no runtime dependencies** — only CPython 3.9 or newer. Pick the
 delivery that matches where you are.
 
-## pip / pipx
+## pip / pipx (from the repository)
+
+> **The PyPI name `pydecomp` belongs to an unrelated project** (a geometry
+> package). `pip install pydecomp` installs that one, not this tool. Install
+> from Git until a release is published under a name this project owns.
 
 ```bash
-pip install pydecomp
-pipx install pydecomp            # isolated, recommended for a CLI
+pip install "git+https://github.com/idam001/pydecomp.git"
+pipx install "git+https://github.com/idam001/pydecomp.git"   # isolated CLI
 ```
 
 This gives you the `pydecomp` command:
@@ -38,7 +42,7 @@ The whole package — engine, decoders, opcode tables and the native sidecar —
 builds into one runnable file:
 
 ```bash
-python3 tools/build_single.py        # -> dist/pydecomp.py, ~199 KB
+python3 tools/build_single.py        # -> dist/pydecomp.py, ~273 KB
 ```
 
 Copy it anywhere Python exists:
@@ -48,6 +52,8 @@ scp dist/pydecomp.py phone:/sdcard/
 # Termux:
 python3 pydecomp.py suspicious.py
 ```
+
+On a phone or a jump host, see [Termux](termux.md) for the exact steps.
 
 The bundle is self-sufficient: it carries its own module table, so there is no
 `pydecomp/` directory to keep beside it. `python3 tools/build_single.py --check`
@@ -60,31 +66,29 @@ docker build -t pydecomp .
 docker run --rm -v "$PWD:/w" -w /w --network=none pydecomp sample.py
 ```
 
-Or from GHCR:
-
-```bash
-docker run --rm -v "$PWD:/w" -w /w --network=none ghcr.io/pydecomp/pydecomp sample.py
-```
+No image is published yet, so build it locally with the command above. Once an
+image is pushed it will live at `ghcr.io/idam001/pydecomp`.
 
 The image is `python:3.13-slim` plus the package. It runs as a non-root user,
 with no network at runtime.
 
-## Termux notes
+## Termux
 
-Everything is pure standard library, so the F-Droid or Play-Store Termux build
-works as-is:
+Short version — full walkthrough on the [Termux page](termux.md):
 
 ```bash
 pkg install python
-python3 pydecomp.py sample.py --no-anim        # animation needs a real tty
+curl -L -O https://raw.githubusercontent.com/idam001/pydecomp/main/dist/pydecomp.py
+python pydecomp.py sample.py -o out --no-anim --reports --yara --diff
 ```
 
-`--no-anim` also helps on slow links: it skips the staged spinner.
+`--no-anim` skips the staged spinner (the animation wants a real tty, and it is
+wasted work on a phone).
 
 ## Verifying your install
 
 ```bash
-pydecomp --selftest
+python pydecomp.py --selftest     # or just: pydecomp --selftest
 ```
 
 It checks the interpreter, imports the native sidecar, runs a synthetic
