@@ -22,6 +22,7 @@ from ..decoders.pyarmor import recovery_note as pyarmor_note
 from ..decoders.hyperion import is_hyperion
 from ..decoders.hyperion import note as hyperion_note
 from ..decoders.hyperion import payload as hyperion_payload
+from .splice import carry_over
 from ..decoders.pyinstaller import (carchive_entries, entry_script, is_carchive,
                                     is_pyz, pyz_modules)
 from ..decoders.pyobfuscate_com import decrypt as pyobfuscate_decrypt
@@ -107,6 +108,11 @@ def _follow_source(source: str, trace: list, depth: int, seen: set,
         if last.is_source and decoded_any:
             text = normalize(last.data.decode("utf-8", "surrogateescape"), "source", False)
             if parses_as_python(text):
+                merged = carry_over(source, text)
+                if merged is not text and parses_as_python(merged):
+                    trace.append("spliced the payload onto the "
+                                 f"{merged.count(chr(10) + chr(10)) + 1} outer definition(s) it reads")
+                    text = merged
                 return Artifact(text, "source", trace, _score(text, "source"))
         if decoded_any:
             found = _digest_bytes(last.data, trace, depth + 1, seen, max_depth)
