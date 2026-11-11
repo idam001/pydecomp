@@ -28,6 +28,10 @@ curl -L -O https://raw.githubusercontent.com/idam001/pydecomp/main/dist/pydecomp
 python pydecomp.py --version
 ```
 
+GitHub serves raw files through a short CDN cache (minutes), so if you download
+seconds after a release you may briefly get the previous file. Pinning a commit
+always works: `https://raw.githubusercontent.com/idam001/pydecomp/<sha>/dist/pydecomp.py`.
+
 That is the entire installation — one 273 KB file, no package directory beside
 it.  If you would rather keep a checkout with the tests and docs:
 
