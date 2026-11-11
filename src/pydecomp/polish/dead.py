@@ -39,6 +39,31 @@ def _module_is_dynamic(tree) -> bool:
     return False
 
 
+def _drop_bare_constants(tree) -> int:
+    """A statement that is just `None` / `0` / `True` does nothing at runtime."""
+    removed = 0
+
+    def sweep(body):
+        nonlocal removed
+        out = []
+        for index, stmt in enumerate(body):
+            if isinstance(stmt, _ast.Expr) and isinstance(stmt.value, _ast.Constant) \
+                    and not (index == 0 and isinstance(stmt.value.value, str)):
+                removed += 1
+                continue
+            for field in ("body", "orelse", "finalbody"):
+                inner = getattr(stmt, field, None)
+                if isinstance(inner, list) and inner and isinstance(inner[0], _ast.AST):
+                    sweep(inner)
+            for handler in getattr(stmt, "handlers", []) or []:
+                sweep(handler.body)
+            out.append(stmt)
+        body[:] = out
+
+    sweep(tree.body)
+    return removed
+
+
 def _drop_unused_literals(tree) -> int:
     """A literal nobody reads any more is only noise - and a rename target."""
     loads = {node.id for node in _ast.walk(tree)
@@ -126,4 +151,5 @@ def _strip_dead(tree) -> int:
     tree.body = prune_block(tree.body)
     sweep(tree.body)
     removed += _drop_unused_literals(tree)
+    removed += _drop_bare_constants(tree)
     return removed

@@ -36,6 +36,7 @@ SUITE = {
     "v8": (GATES / "test_v8.py", {}, False),
     "almighty": (GATES / "test_almighty.py", {}, False),
     "reconstruct": (GATES / "test_reconstruct.py", {}, False),
+    "families": (GATES / "families_probe.py", {}, False),
     "identity": (GATES / "test_identity.py", {}, False),
     "probes": (GATES / "test_probes.py", {}, False),
     "native": (GATES / "test_native.py", {}, True),
