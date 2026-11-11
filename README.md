@@ -104,6 +104,20 @@ container and on a phone: one directory tree, or one file.
 | **Runs anywhere** | Pure standard library, single file if you want it, Termux included. |
 | **Honest output** | Every recovery is compiled, audited for unbound names, and reported — a file that cannot run is never sold as success. |
 
+## Cleaning may never cost you the program
+
+The last thing that happens before a file is written is a fidelity check: the
+cleaned source is compared with the program as it came out of the container.  It
+is kept only if it still parses, still holds its definitions, and is not a wall
+of literals.  If an upgrade would degrade the result, the unpacked program is
+written instead and the tool says so:
+
+```
+   fidelity   rolled back to the unpacked program — cleaning lost 3 of 4 definition(s)
+```
+
+You lose a little tidiness, never the recovered script.
+
 ## Install
 
 ```bash
