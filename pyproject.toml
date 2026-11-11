@@ -1,0 +1,147 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pydecomp"
+description = "Static Python deobfuscator: recover readable source from packed, encoded or compiled Python without ever executing it."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Idam Emmanuel", email = "idamemmanuel@users.noreply.github.com" },
+]
+keywords = ["deobfuscation", "reverse-engineering", "bytecode", "marshal", "malware-analysis", "static-analysis"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Security",
+  "Topic :: Software Development :: Disassemblers",
+]
+dependencies = []
+dynamic = ["version"]
+
+[project.optional-dependencies]
+# The native (Cython/ELF) front-end only needs Cython to rebuild the fixtures;
+# analysing a binary uses the bundled sidecar and nothing else.
+cython = ["cython>=3.0"]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "mkdocstrings[python]>=0.25",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "mkdocstrings[python]>=0.25",
+]
+
+[project.urls]
+Homepage = "https://github.com/pydecomp/pydecomp"
+Documentation = "https://pydecomp.github.io/pydecomp/"
+Changelog = "https://github.com/pydecomp/pydecomp/blob/main/CHANGELOG.md"
+Issues = "https://github.com/pydecomp/pydecomp/issues"
+Security = "https://github.com/pydecomp/pydecomp/blob/main/SECURITY.md"
+
+[project.scripts]
+pydecomp = "pydecomp.cli:main"
+
+[project.gui-scripts]
+"pydecomp-gui" = "pydecomp.cli:main"
+
+[tool.hatch.version]
+path = "src/pydecomp/limits.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pydecomp"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/pydecomp",
+  "/tests",
+  "/tools",
+  "/docs",
+  "/examples",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/LICENSE",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "python -m pytest {args:tests/unit}"
+gates = "python tools/run_gates.py"
+single = "python tools/build_single.py"
+
+# --------------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["src", "tests", "tools"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+  "E501",   # line length is handled by the formatter
+  "B008",   # functools.partial in defaults is deliberate
+  "SIM105", # contextlib.suppress is not always clearer in the lifters
+  "RUF001", # the CLI prints box-drawing characters on purpose
+  "RUF002",
+  "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E402", "F401", "B011"]
+"src/pydecomp/bytecode/decompiler6.py" = ["C901", "PLR0912", "PLR0915"]
+"src/pydecomp/native/sidecar.py" = ["C901", "PLR0912", "PLR0915"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# --------------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.9"
+files = ["src/pydecomp"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = false
+ignore_missing_imports = true
+
+# ------------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests/unit"]
+addopts = "-q --strict-markers"
+markers = [
+  "slow: takes more than a few seconds (bytecode round trips, big samples)",
+  "native: needs the compiled Cython fixtures (cython + gcc)",
+]
+filterwarnings = ["error::SyntaxWarning"]
+
+# ------------------------------------------------------------------- coverage
+[tool.coverage.run]
+source = ["src/pydecomp"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "\\.\\.\\.",
+]

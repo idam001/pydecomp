@@ -1,0 +1,35 @@
+# Spelling exceptions for crate-ci/typos.
+# Bytecode, obfuscator families and recovered identifier junk are not typos.
+
+[files]
+extend-exclude = [
+  "tests/fixtures/obf_cases/**",
+  "dist/**",
+  "*.pyc",
+]
+
+[default.extend-words]
+pydecomp = "pydecomp"
+deob = "deob"
+deobfuscator = "deobfuscator"
+unflatten = "unflatten"
+unflattening = "unflattening"
+demangle = "demangle"
+demangling = "demangling"
+marshal = "marshal"
+marshalled = "marshalled"
+pyobfus = "pyobfus"
+pyarmor = "pyarmor"
+pyinstaller = "pyinstaller"
+nuitka = "nuitka"
+termux = "termux"
+posix = "posix"
+iocs = "iocs"
+sha = "sha"
+codeobj = "codeobj"
+co_names = "co_names"
+co_consts = "co_consts"
+co_varnames = "co_varnames"
+
+[default]
+locale = "en-us"

@@ -1,0 +1,8 @@
+{
+  "contains": [
+    "KEY = ",
+    "URL = ",
+    "example.invalid"
+  ],
+  "preamble": false
+}

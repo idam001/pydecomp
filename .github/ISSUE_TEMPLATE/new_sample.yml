@@ -1,0 +1,82 @@
+name: New sample
+description: pydecomp mishandles a file — share its shape so the gap can be closed.
+title: "[sample] "
+labels: ["sample", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful issue you can open. **Never attach live malware.**
+        The hash, the size, the shape of the packing, and what pydecomp got wrong
+        are what make a fix possible. If you can, reduce it to the smallest
+        synthetic file that still reproduces the problem — that becomes a fixture.
+
+  - type: input
+    id: sha256
+    attributes:
+      label: sha256
+      placeholder: "e3b0c44298fc1c149afbf4c8996fb924…"
+    validations:
+      required: true
+
+  - type: input
+    id: size
+    attributes:
+      label: Size in bytes
+      placeholder: "2499"
+    validations:
+      required: true
+
+  - type: input
+    id: producer
+    attributes:
+      label: What produced it
+      description: Compiler, packer, obfuscator family — your best guess is fine.
+      placeholder: "PyInstaller-ish dropper, pyobfus-style mangling, marshal + zlib"
+
+  - type: textarea
+    id: layers
+    attributes:
+      label: Layers you know about
+      description: The wrap order, outermost first.
+      render: text
+      placeholder: |
+        1. base64 of a gzip stream
+        2. gzip of a zip archive
+        3. zip containing a single .pyc
+
+  - type: textarea
+    id: result
+    attributes:
+      label: What pydecomp does now
+      description: The panel output, the stage list, or the uncleaned part of the recovered file.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What good output looks like
+      description: Ideally a few lines of the source you expect to see back.
+
+  - type: dropdown
+    id: shareable
+    attributes:
+      label: Can you share the file?
+      options:
+        - Yes — defanged, I will attach a redacted or encrypted copy in the issue
+        - Only a synthetic reproducer with the same shape
+        - No, hash and description only
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: I am authorised to analyse this file
+          required: true
+        - label: Anything attached is defanged and contains no personal data or secrets
+          required: true

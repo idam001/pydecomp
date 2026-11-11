@@ -1,0 +1,9 @@
+# Normalise line endings; keep generated fixtures byte-exact.
+* text=auto eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.so binary
+*.pyc binary
+*.c binary
+tests/fixtures/** -text
+dist/pydecomp.py text eol=lf linguist-generated=true

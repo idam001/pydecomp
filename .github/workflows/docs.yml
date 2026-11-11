@@ -1,0 +1,68 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "src/pydecomp/**"
+      - "README.md"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[docs]"
+      - name: strict build (a broken link fails CI)
+        run: mkdocs build --strict --site-dir _site
+      - name: check that every docs page is in the nav
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          nav = pathlib.Path("mkdocs.yml").read_text()
+          pages = sorted(p.relative_to("docs").as_posix()
+                         for p in pathlib.Path("docs").rglob("*.md"))
+          missing = [p for p in pages if p not in nav]
+          if missing:
+              print("not in mkdocs.yml nav:", missing)
+              sys.exit(1)
+          print(f"{len(pages)} pages, all in the nav")
+          PY
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: _site
+
+  deploy:
+    name: deploy to Pages
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

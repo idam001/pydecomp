@@ -1,0 +1,57 @@
+# Run `pre-commit install` once; every commit then runs the same checks as CI.
+# Skip in a hurry with `SKIP=ruff,mypy git commit ...` (CI still enforces them).
+default_stages: [pre-commit]
+fail_fast: false
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        exclude: ^tests/fixtures/
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        files: ^src/pydecomp/
+        additional_dependencies: []
+        args: ["--ignore-missing-imports"]
+
+  # Project-local checks: the things a linter cannot see.
+  - repo: local
+    hooks:
+      - id: pydecomp-gates
+        name: integration gates (fast subset)
+        entry: python3 tools/run_gates.py v5 v7 probes
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: pydecomp-single-file
+        name: single-file build is current
+        entry: python3 tools/build_single.py --check --quiet
+        language: system
+        pass_filenames: false
+      - id: no-exec-of-samples
+        name: no exec/eval of sample bytes
+        entry: python3 tools/check_static_only.py
+        language: system
+        pass_filenames: false

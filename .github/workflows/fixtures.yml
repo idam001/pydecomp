@@ -1,0 +1,87 @@
+name: Fixtures
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/fixtures/**"
+      - "tools/make_fixtures.py"
+      - "tools/gen_opcode_tables.py"
+  pull_request:
+    paths:
+      - "tests/fixtures/**"
+      - "tools/make_fixtures.py"
+  schedule:
+    - cron: "0 5 1 * *"          # first of the month: fixtures drift with CPython
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+  NO_COLOR: "1"
+
+jobs:
+  text-fixtures:
+    name: text fixtures · py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: rebuild the text fixtures from their generators
+        run: python3 tools/make_fixtures.py --check
+      - name: the fixtures recover
+        run: PYTHONPATH=src python3 tests/integration/test_v4.py
+
+  native-fixtures:
+    name: native fixtures (cython + gcc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[dev,cython]"
+      - name: build the compiled fixtures
+        run: python3 tests/fixtures/native/make_native_fixtures.py
+      - name: tier S must rebuild the source byte for byte
+        run: |
+          PYTHONPATH=src python3 - <<'PY'
+          import pathlib, difflib
+          from pydecomp.native import sidecar as N
+          here = pathlib.Path("tests/fixtures/native")
+          path = here / "demo_module.so"
+          info = N.CythonInfo(N.ElfImage(path.read_bytes(), str(path))).analyse()
+          got = N.cython_source(info).splitlines()
+          while got and got[0].startswith("#"):
+              got.pop(0)
+          while got and not got[0].strip():
+              got.pop(0)
+          want = (here / "demo_module.py").read_text().splitlines()
+          assert info.tier == "S", info.tier
+          assert got == want, "\n".join(difflib.unified_diff(want, got, lineterm=""))
+          print(f"tier S: {len(want)} lines recovered exactly")
+          PY
+      - name: the native gate
+        run: ulimit -v 4000000; PYTHONPATH=src python3 -u tests/integration/test_native.py
+
+  opcode-tables:
+    name: opcode tables match CPython
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: every table entry is coherent
+        run: python3 tools/gen_opcode_tables.py --check

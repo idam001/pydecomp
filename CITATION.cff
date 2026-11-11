@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+message: "If pydecomp helped your analysis or research, please cite it as below."
+title: "pydecomp: static Python deobfuscator"
+abstract: >-
+  pydecomp recovers readable source from packed, encoded, mangled or
+  partly-compiled Python files without executing them. It models the bytecode
+  directly: its own marshal reader, per-version opcode tables for CPython 3.9
+  through 3.14, an expression evaluator with a whitelist, and a polishing pass
+  that demangles identifiers and removes dead branches. Every recovery is
+  compiled, audited for unbound names and reported, so an output that cannot
+  run is never presented as a success.
+type: software
+license: MIT
+version: 8.1.0
+date-released: 2026-10-31
+repository-code: "https://github.com/pydecomp/pydecomp"
+url: "https://pydecomp.github.io/pydecomp/"
+keywords:
+  - deobfuscation
+  - reverse engineering
+  - python bytecode
+  - static analysis
+  - malware analysis
+  - marshal
+identifiers:
+  - type: url
+    value: "https://github.com/pydecomp/pydecomp"
+authors:
+  - family-names: "Emmanuel"
+    given-names: "Idam"
+    alias: "pydecomp"
+preferred-citation:
+  type: software
+  title: "pydecomp"
+  authors:
+    - family-names: "Emmanuel"
+      given-names: "Idam"
+  year: 2026
+  version: 8.1.0
+  license: MIT
+  repository-code: "https://github.com/pydecomp/pydecomp"
+references:
+  - type: software
+    title: "CPython dis module"
+    authors:
+      - name: "Python Software Foundation"
+    year: 2026
+    url: "https://docs.python.org/3/library/dis.html"
+  - type: software
+    title: "CPython marshal format"
+    authors:
+      - name: "Python Software Foundation"
+    note: "PEP 552 and the CPython source, Python/marshal.c"
+    year: 2026

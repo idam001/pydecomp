@@ -1,0 +1,70 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install ruff==0.6.9
+      - name: lint
+        run: ruff check --output-format=github .
+      - name: format check
+        run: ruff format --check --diff .
+
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    continue-on-error: true          # typing is a goal, not yet a wall
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install mypy
+      - run: mypy src/pydecomp --ignore-missing-imports
+
+  repo-hygiene:
+    name: repo hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: no committed binaries or recovered output
+        run: |
+          set -e
+          if git ls-files | grep -E '(^|/)(_deob\.py|\.report\.(json|md)|pydecomp\.pyc)$'; then
+            echo "::error::analysed output must not be committed"; exit 1
+          fi
+          big=$(git ls-files -z | xargs -0 -I{} sh -c 'test -f "{}" && wc -c < "{}"' | sort -rn | head -1)
+          echo "largest tracked file: $big bytes"
+      - name: changelog has an Unreleased section
+        run: grep -q "## \[Unreleased\]" CHANGELOG.md
+      - name: packaging metadata is valid
+        run: |
+          pip install build
+          python -m build --sdist --outdir /tmp/sdist >/dev/null
+          ls /tmp/sdist/*.tar.gz
+
+  spellcheck:
+    name: docs spelling
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@master
+        with:
+          config: .github/typos.toml

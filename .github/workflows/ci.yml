@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"          # Mondays: catch drift in stdlib behaviour
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+  PYTHONDONTWRITEBYTECODE: "1"
+  NO_COLOR: "1"
+
+jobs:
+  unit:
+    name: unit · py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: import smoke test
+        run: python -c "import pydecomp; print(pydecomp.__version__)"
+      - name: pytest
+        run: python -m pytest tests/unit -q --timeout=300 || python -m pytest tests/unit -q
+
+  gates:
+    name: integration gates · py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: run every gate
+        run: python3 tools/run_gates.py --json gates.json
+      - name: upload the gate table
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gates-py${{ matrix.python }}
+          path: gates.json
+
+  single-file:
+    name: single-file build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: build
+        run: python3 tools/build_single.py
+      - name: check the committed build is current
+        run: python3 tools/build_single.py --check
+      - name: run it from an empty directory, with no package on disk
+        run: |
+          tmp=$(mktemp -d)
+          cp dist/pydecomp.py "$tmp/"
+          printf 'print("hello")\n' > "$tmp/plain.py"
+          cd "$tmp" && python3 pydecomp.py plain.py --no-color --no-anim
+          test -f plain_deob.py
+      - name: selftest
+        run: python3 dist/pydecomp.py --selftest --no-color
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pydecomp-single-file
+          path: dist/pydecomp.py
+
+  static-only:
+    name: static-only proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: no exec/eval/subprocess of sample bytes
+        run: python3 tools/check_static_only.py
+      - name: the CLI never writes more than one file without --reports
+        run: PYTHONPATH=src python3 tests/integration/test_v5.py
+
+  bench:
+    name: benchmark (non-blocking outside main)
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: PYTHONPATH=src python3 tests/benchmarks/bench_obf_bench.py | tee bench.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench
+          path: bench.txt
+      - name: fail if the semantic score regresses below 33/44
+        run: grep -q "33/44\|34/44\|35/44\|36/44\|37/44\|38/44\|39/44\|40/44\|41/44\|42/44\|43/44\|44/44" bench.txt

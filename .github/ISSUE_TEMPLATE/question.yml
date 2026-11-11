@@ -1,0 +1,44 @@
+name: Question / usage help
+description: How do I use pydecomp for X?
+title: "[q] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/faq.md](https://github.com/pydecomp/pydecomp/blob/main/docs/faq.md)
+        and [docs/cli.md](https://github.com/pydecomp/pydecomp/blob/main/docs/cli.md)
+        first — most questions are answered there.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you have tried
+      render: shell
+      placeholder: |
+        pydecomp sample.py --reports
+        pydecomp sample.py --no-color --no-anim
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output so far
+      description: The panel or report is usually enough to answer.
+      render: text
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This is about analysing a file I am authorised to analyse
+          required: true
+        - label: This is not a request for help deploying or evading detection
+          required: true

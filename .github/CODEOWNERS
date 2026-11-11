@@ -1,0 +1,34 @@
+# Default owners for everything in the repo.
+*                       @idamemmanuel
+
+# Engine core: changes here move every gate.
+/src/pydecomp/engine/     @pydecomp/core
+/src/pydecomp/lift/       @pydecomp/core
+/src/pydecomp/polish/     @pydecomp/core
+
+# Bytecode: marshal reader, opcode tables, lifters, decompiler6.
+/src/pydecomp/bytecode/   @pydecomp/bytecode @pydecomp/maintainers
+
+# Decoders, crypto and the expression evaluator.
+/src/pydecomp/decoders/   @pydecomp/decoders
+/src/pydecomp/crypto/     @pydecomp/decoders
+/src/pydecomp/eval/       @pydecomp/decoders
+
+# Native front-end (options 2 and 3, preview).
+/src/pydecomp/native/     @pydecomp/native
+
+# Output, terminal and CLI: the user-visible contract.
+/src/pydecomp/output/     @pydecomp/maintainers
+/src/pydecomp/terminal/   @pydecomp/maintainers
+/src/pydecomp/cli.py      @pydecomp/maintainers
+
+# Tests and fixtures.
+/tests/                 @pydecomp/maintainers
+/tests/fixtures/        @pydecomp/maintainers @pydecomp/security
+
+# Supply chain, release and security documents need a maintainer review.
+/SECURITY.md            @pydecomp/maintainers @pydecomp/security
+/.github/workflows/     @pydecomp/maintainers
+/pyproject.toml         @pydecomp/maintainers
+/tools/                 @pydecomp/maintainers
+/docs/                  @pydecomp/docs

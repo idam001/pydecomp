@@ -1,0 +1,67 @@
+name: Feature request
+description: A decoder, an obfuscator family, or a new capability.
+title: "[feat] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        pydecomp stays small on purpose. Requests that add a dependency, run the
+        sample, or fetch anything over the network are out of scope — see
+        [GOVERNANCE.md](https://github.com/pydecomp/pydecomp/blob/main/GOVERNANCE.md).
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - decoder / encoding
+        - compression container
+        - crypto (stdlib only)
+        - bytecode / opcode version
+        - lifter or decompiler quality
+        - polish (demangle, folding, unflattening)
+        - triage / fingerprint
+        - output and reporting
+        - CLI / menu
+        - native (Cython / ELF)
+        - docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What does pydecomp fail to do today? A concrete sample shape beats an abstraction.
+    validations:
+      required: true
+
+  - type: textarea
+    id: shape
+    attributes:
+      label: The shape to support
+      description: |
+        Show the structure, not the malware: how the data is encoded, in what
+        order the layers wrap, which trick defeats the current pipeline.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How you would implement it
+      description: Where it goes (module), what it returns on "not mine", what the fixture looks like.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints you accept
+      options:
+        - label: Static only — the sample is never executed, imported or spawned
+          required: true
+        - label: Standard library only — no new runtime dependency
+          required: true
+        - label: A synthetic fixture and a probe will come with the PR
+          required: true

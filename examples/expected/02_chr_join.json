@@ -1,0 +1,7 @@
+{
+  "contains": [
+    "KEY = ",
+    "example.invalid"
+  ],
+  "preamble": false
+}

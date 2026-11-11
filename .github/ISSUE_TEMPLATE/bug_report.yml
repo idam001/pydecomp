@@ -1,0 +1,88 @@
+name: Bug report
+description: Something crashed, or recovered the wrong source.
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Do not attach live malware.** A hash plus a
+        defanged excerpt, or a synthetic file with the same shape, is enough.
+
+  - type: input
+    id: version
+    attributes:
+      label: pydecomp version
+      description: Output of `pydecomp --version`
+      placeholder: "8.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python and platform
+      placeholder: "CPython 3.13.1 / Termux aarch64"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running it?
+      options:
+        - single file (dist/pydecomp.py)
+        - pip / pipx install
+        - editable checkout (PYTHONPATH=src -m pydecomp)
+        - interactive menu
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      render: shell
+      placeholder: pydecomp sample.py -o out/ --no-color --no-anim
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Paste the panel output or the traceback.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: gate
+    attributes:
+      label: Failing gate, if you ran one
+      placeholder: "tests/integration/test_v8.py — 41/44"
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample details
+      description: sha256, size, and what made it (compiler, packer, obfuscator family).
+      placeholder: |
+        sha256: …
+        size: 2,499 B
+        family: pyobfus-style identifier mangling
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: The attached material is defanged or synthetic, and contains no secrets
+          required: true
