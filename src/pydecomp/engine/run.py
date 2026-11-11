@@ -71,7 +71,7 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         body, guard_notes = neutralize_source(body)
         clean_notes = list(clean_notes) + guard_notes
 
-    report = analyse_recovered(body, trace)
+    report = analyse_recovered(body, trace, raw=raw)
     head = render_report(report, trace, name, raw_size, digest)
     text = "\n".join(head) + "\n\n" + body
 
@@ -114,9 +114,7 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         ("output", f"{os.path.basename(path)}   {nbytes:,} bytes", WHITE),
     ]
     if report["iocs"]:
-        counts = ", ".join(f"{label} {len(values)}"
-                           for label, values in report["iocs"].items())
-        rows.append(("indicators", counts, YELLOW))
+        rows.append(("indicators", report.get("ioc_summary", "none found"), YELLOW))
     if report["risks"]:
         rows.append(("behaviour", ", ".join(report["risks"]), RED))
     if clean_notes:

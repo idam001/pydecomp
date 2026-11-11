@@ -558,7 +558,8 @@ def _report_iocs():
               'requests.post(URL)\n')
     report = P.analyse_recovered(source)
     eq("url" in report["iocs"], True, "url found")
-    eq("webhook" in report["iocs"], True, "webhook found")
+    eq("discord-webhook" in report["iocs"], True, "webhook found")
+    eq(report["ioc_summary"].count("·") >= 1, True, "summary names the indicator types")
     eq("exfil" in report["risks"], True, "behaviour flagged")
     eq(bool(report["fingerprint"]), True, "fingerprint present")
 

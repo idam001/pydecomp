@@ -166,7 +166,11 @@ from .terminal.menu import ask_file, interactive_loop, menu
 from .terminal.panel import panel
 from .triage.behavior import _RISKY
 from .triage.fingerprint import _fingerprint
-from .triage.iocs import _IOC_PATTERNS
+from .triage.iocs import (
+    _PATTERNS as _IOC_PATTERNS, defang, entropy, extract as extract_iocs,
+    render_markdown as render_iocs_markdown,
+    summary as ioc_summary,
+)
 from .triage.pyarmor import (
     _PYARMOR_MARKERS, extract_pyarmor_blobs, pyarmor_markers, pyarmor_note,
 )
@@ -538,6 +542,11 @@ __all__ = ["__version__"] + [
     "_RISKY",
     "_fingerprint",
     "_IOC_PATTERNS",
+    "defang",
+    "entropy",
+    "extract_iocs",
+    "render_iocs_markdown",
+    "ioc_summary",
     "_PYARMOR_MARKERS",
     "extract_pyarmor_blobs",
     "pyarmor_markers",

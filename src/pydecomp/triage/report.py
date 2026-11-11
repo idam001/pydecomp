@@ -9,33 +9,24 @@ from ..polish.demangle import _ast
 from ..terminal.color import ellipsis
 from ..triage.behavior import _RISKY
 from ..triage.fingerprint import _fingerprint
-from ..triage.iocs import _IOC_PATTERNS
+from ..triage.iocs import extract, render_markdown, summary
 from ..triage.pyarmor import pyarmor_note
 
-def analyse_recovered(source: str, trace: list | None = None) -> dict:
+def analyse_recovered(source: str, trace: list | None = None,
+                      raw: bytes | None = None) -> dict:
     """Everything a human wants to know before reading the code (items 22-24)."""
     trace = trace or []
     report = {"fingerprint": _fingerprint(source, trace), "imports": [],
               "pyarmor": pyarmor_note(source),
               "execs": [], "sys_modules": [], "iocs": {}, "risks": {},
+              "ioc_counts": {}, "ioc_where": {}, "ioc_summary": "none found",
               "defines": 0, "statements": 0}
-    seen_ioc = {}
-    for label, pattern in _IOC_PATTERNS:
-        for match in pattern.finditer(source):
-            value = match.group(0)
-            if label == "ipv4":
-                parts = value.split(".")
-                if any(int(p) > 255 for p in parts) or value.startswith("0."):
-                    continue
-                if value in ("127.0.0.1", "0.0.0.0"):
-                    continue
-            bucket = seen_ioc.setdefault(label, set())
-            if len(bucket) >= 60:
-                continue
-            bucket.add(value)
-    for label, values in seen_ioc.items():
-        if values:
-            report["iocs"][label] = sorted(values)[:60]
+    sheet = extract(source, raw)
+    report["iocs"] = sheet["iocs"]
+    report["ioc_counts"] = sheet["counts"]
+    report["ioc_where"] = sheet["where"]
+    report["ioc_defanged"] = sheet["defanged"]
+    report["ioc_summary"] = summary(sheet["iocs"])
     for label, pattern in _RISKY.items():
         hits = sorted({m.group(0) for m in pattern.finditer(source)})[:12]
         if hits:
@@ -106,6 +97,8 @@ def write_reports(path: str, report: dict, trace: list, name: str, size: int,
         "execs": report.get("execs", []),
         "sys_modules": report.get("sys_modules", []),
         "iocs": report.get("iocs", {}),
+        "ioc_counts": report.get("ioc_counts", {}),
+        "ioc_where": report.get("ioc_where", {}),
         "behavior": report.get("risks", {}),
         "statements": report.get("statements", 0),
         "readme": list(notes or []),
@@ -115,6 +108,14 @@ def write_reports(path: str, report: dict, trace: list, name: str, size: int,
         with open(json_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
         written["json"] = json_path
+    except Exception:                                # noqa: BLE001
+        pass
+    try:
+        sheet = {"iocs": report.get("iocs", {}), "counts": report.get("ioc_counts", {})}
+        ioc_path = os.path.join(folder, stem + ".iocs.md")
+        with open(ioc_path, "w", encoding="utf-8") as handle:
+            handle.write(render_markdown(name, sheet, digest))
+        written["iocs"] = ioc_path
     except Exception:                                # noqa: BLE001
         pass
     try:
