@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from ..polish.demangle import _ast
 
-_KEPT, _MISSING, _EMPTY = "kept", "missing", "emptied"
+_KEPT, _MISSING, _EMPTY, _RENAMED = "kept", "missing", "emptied", "renamed"
 
 
 def _count_statements(nodes) -> int:
@@ -84,7 +84,7 @@ def compare(original: str, recovered: str) -> dict:
     """Compare the program that came out of the container with the cleaned one."""
     result = {
         "parsed": False, "definitions": {}, "kept": 0, "lost": 0, "emptied": 0,
-        "statements_before": 0, "statements_after": 0, "names_lost": [],
+        "statements_before": 0, "statements_after": 0, "names_lost": [], "renamed": 0,
         "imports_lost": [], "strings_before": 0, "strings_kept": 0,
         "verdict": "unparsed",
     }
@@ -113,6 +113,27 @@ def compare(original: str, recovered: str) -> dict:
             result["kept"] += 1
         result["definitions"][name] = {"kind": kind, "status": status,
                                        "before": statements, "after": new_count}
+
+    # a definition whose name changed is not a loss: de-mangling renames things.
+    # Match each missing name to an unexplained new one of the same kind and a
+    # similar body size, but only when the match is unambiguous.
+    new_only = {name: info for name, info in new_defs.items() if name not in old_defs}
+    for name, info in list(result["definitions"].items()):
+        if info["status"] != _MISSING:
+            continue
+        tolerance = max(2, info["before"] // 4)
+        candidates = [(candidate, shape) for candidate, shape in new_only.items()
+                      if shape[0] == info["kind"]
+                      and abs(shape[1] - info["before"]) <= tolerance]
+        if len(candidates) == 1:
+            candidate, shape = candidates[0]
+            info["status"] = _RENAMED
+            info["renamed_to"] = candidate
+            info["after"] = shape[1]
+            del new_only[candidate]
+            result["lost"] -= 1
+            result["renamed"] += 1
+            result["kept"] += 0
 
     result["names_lost"] = sorted(_module_names(before) - _module_names(after))
     result["imports_lost"] = sorted(_imports(before) - _imports(after))
@@ -143,8 +164,9 @@ def compare(original: str, recovered: str) -> dict:
 def summary(result: dict) -> str:
     if not result["parsed"]:
         return result["verdict"]
+    renamed = f", {result['renamed']} renamed" if result.get("renamed") else ""
     return (f"{result['verdict']}: {result['kept']} definition(s) kept, "
-            f"{result['lost']} lost · {result['strings_kept']}/"
+            f"{result['lost']} lost{renamed} · {result['strings_kept']}/"
             f"{result['strings_before']} literals · "
             f"{result['statements_before']}→{result['statements_after']} statements")
 
@@ -169,8 +191,11 @@ def render_markdown(name: str, result: dict) -> str:
         lines += ["| definition | kind | statements before | after | status |",
                   "| --- | --- | --- | --- | --- |"]
         for name_, info in result["definitions"].items():
+            status = info["status"]
+            if info.get("renamed_to"):
+                status += f" → `{info['renamed_to']}`"
             lines.append(f"| `{name_}` | {info['kind']} | {info['before']} | "
-                         f"{info['after']} | {info['status']} |")
+                         f"{info['after']} | {status} |")
         lines.append("")
     if result["names_lost"]:
         lines += [f"- **module names lost**: {', '.join(result['names_lost'])}", ""]

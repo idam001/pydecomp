@@ -228,6 +228,9 @@ def validate(text: str, sample: bytes) -> dict:
     matched, hit, total = match(rule, sample)
     if rule.strings and hit == 0:
         problems.append("no indicator string is present in the sample the rule was built from")
+    if rule.strings and 0 < hit < total:
+        problems.append(f"{total - hit} indicator string(s) are not in the recovered "
+                        "source (carved from the packed bytes only)")
     if rule.strings and not matched:
         problems.append("rule does not match its own sample")
     return {"ok": not problems, "problems": problems, "matched": matched,

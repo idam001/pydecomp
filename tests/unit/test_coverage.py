@@ -99,3 +99,22 @@ def test_summary_is_one_line():
     line = summary(compare(ORIGINAL, ORIGINAL))
     assert "\n" not in line
     assert "complete" in line
+
+
+def test_de_mangled_definition_is_a_rename_not_a_loss():
+    renamed = ORIGINAL.replace("def unused(marker):", "def helper(marker):")
+    result = compare(ORIGINAL, renamed)
+    assert result["definitions"]["unused"]["status"] == "renamed"
+    assert result["definitions"]["unused"]["renamed_to"] == "helper"
+    assert result["lost"] == 0
+    assert result["verdict"] == "complete"
+
+
+def test_ambiguous_rename_is_not_guessed():
+    doubled = ORIGINAL.replace(
+        'def unused(marker):\n    return marker + "tail"\n',
+        'def first(marker):\n    return marker + "tail"\n'
+        'def second(marker):\n    return marker + "tail"\n')
+    result = compare(ORIGINAL, doubled)
+    # two equally plausible replacements: report the loss rather than guess
+    assert result["definitions"]["unused"]["status"] == "missing"
