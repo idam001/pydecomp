@@ -17,10 +17,26 @@ from ..terminal.color import (
 )
 from ..terminal.locate import missing, resolve
 from ..terminal.panel import panel
+from ..triage.payload import summary as summary_intel
 from ..triage.report import analyse_recovered, render_report, write_reports
 from ..triage.verify import _exec_dry_run
 
 STAMP_PREFIX = "#[ Deobfuscated by"
+
+def _payload_intel(artifact) -> dict | None:
+    """Fingerprints a sealed payload still shows: names, files, literals.
+
+    Never an attempt at recovery - the ciphertext stays ciphertext - but the
+    author's own name tables survive packaging and are worth a file.
+    """
+    code = getattr(artifact, "payload_code", None)
+    if code is None:
+        return None
+    try:
+        from ..triage.payload import harvest
+        return harvest(code) or None
+    except Exception:                                # noqa: BLE001 - never fail a run
+        return None
 
 def _strip_pydecomp_preamble(text: str) -> str:
     """Drop the header this tool wrote last time, keep the sample's own."""
@@ -77,6 +93,7 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         animate_bar(f"stage {shown + 1}", 0.42, CYAN, ellipsis(line, max(width() - 34, 20)))
         shown += 1
 
+    intel = None
     body = _strip_pydecomp_preamble(artifact.text)
     original_text = body
     clean_notes: list[str] = []
@@ -116,6 +133,11 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         emit(paint("payload      still encrypted  " + str(artifact.encrypted_blobs)
                    + f" blob(s), {artifact.encrypted_bytes:,} B — "
                    + "lifted the loader, not the script", RED, BOLD))
+        intel = _payload_intel(artifact)
+        if intel:
+            report["intel"] = summary_intel(intel)
+            emit(paint("intel        " + summary_intel(intel)
+                       + "  (structure the packer left behind)", CYAN))
     if fidelity is not None:
         report["fidelity"] = {key: fidelity[key] for key in ("kept", "reason")} | {
             "before": fidelity["before"], "after": fidelity["after"]}
@@ -152,6 +174,17 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
 
     suffix = "loader" if artifact.stalled else ("copy" if left_alone else "deob")
     path = save(text, src_path, out_dir, suffix=suffix)
+    intel_path = None
+    if intel:
+        try:
+            from ..triage.payload import render as render_intel
+            intel_path = os.path.join(os.path.dirname(os.path.abspath(path)),
+                                      os.path.splitext(os.path.basename(path))[0]
+                                      + "_intel.txt")
+            with open(intel_path, "w", encoding="utf-8") as handle:
+                handle.write(render_intel(name, intel))
+        except OSError:
+            intel_path = None
     if coverage is not None:
         from ..triage.coverage import render_markdown as render_cov
         try:
@@ -174,6 +207,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     if reports:
         side = write_reports(path, report, trace, name, raw_size, digest, elapsed,
                              notes=clean_notes)
+    if intel_path:
+        side = dict(side, intel=intel_path) if side else {"intel": intel_path}
     if coverage is not None:
         cov_file = os.path.join(os.path.dirname(os.path.abspath(path)),
                                 os.path.splitext(os.path.basename(path))[0]
@@ -225,6 +260,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     if artifact.stalled:
         rows.append(("payload", f"sealed   {artifact.encrypted_blobs} blob(s)   "
                                 f"{artifact.encrypted_bytes:,} bytes", RED))
+    if intel:
+        rows.append(("intel", summary_intel(intel), CYAN))
     if report["iocs"]:
         rows.append(("indicators", report.get("ioc_summary", "none found"), YELLOW))
     if report["risks"]:

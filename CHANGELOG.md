@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Payload intelligence for sealed payloads
+
+When a packer seals its payload, `<stem>_intel.txt` now lands next to the
+`_loader` output.  It reports what the sealed code object still says about
+itself: the capability groups its name table reaches for (network, subprocess,
+dynamic code, decode layers, anti-analysis), the de-duplicated name table, the
+sealed blob count and the CJK filler it discarded.  The DONE panel gained an
+`intel` row and `report.json` gained an `intel` key.
+
+- **Honesty work on our own claims.**  This campaign previously listed the
+  original script's identifiers as "leaked".  They were not: each occurs once in
+  a disabled comment line inside the lifted loader.  Harvesting the payload's
+  real name table returns 400 identifiers, all belonging to the packaging
+  loader.  `docs/adversarial.md` now says so, with the measurement.
+- **Capability claims match whole identifier words.**  Substring matching turned
+  a traceback helper into an "`os.walk`" claim; only an exact name counts now.
+- **Single-byte XOR stays off.**  It is implemented, tested and reported as *not
+  applied*: every precision filter we measured still let 60 noise literals
+  through on the real sample, and the 11 `__nxor2__` call sites do not decode
+  under any single-byte key.
+- `harvest()` accepts both pydecomp's code wrapper and a real code object, so it
+  can never silently return nothing for a payload it was handed.
+- 11 new unit tests (`tests/unit/test_payload_intel.py`) and 4 new adversarial
+  checks (21 total).
+
 ## [1.0.0] — 2026-11-01 — “the Almighty”
 
 ### The Almighty

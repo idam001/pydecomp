@@ -89,6 +89,7 @@ def _from_code(mod: CodeObj, version: tuple, trace: list, depth: int,
         found.stalled = True
         found.encrypted_blobs = blobs
         found.encrypted_bytes = total
+        found.payload_code = mod
         trace.append(f"payload is encrypted: {blobs} blob(s), {total:,} B — "
                      f"this code is the loader, not the script")
     return found

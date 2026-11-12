@@ -9,7 +9,8 @@ needs no binary fixtures:
    program.  Correct behaviour: recover the real payload.
 2. **sealed payload** — the exec'd module carries a large opaque blob, so what
    we can lift is the packer's loader, not the script.  Correct behaviour: say
-   so, name the output ``_loader``, never claim verification.
+   so, name the output ``_loader``, never claim verification — and still hand
+   back the intelligence the payload's own name table gives up (``_intel.txt``).
 3. **nothing to unpack** — a file that already reads as source.  Correct
    behaviour: save a copy and say "no layer recognised", not "verified".
 """
@@ -117,6 +118,20 @@ def main():
         ok((data.get("fidelity") or {}).get("kept") == "unverified",
            "the report marks the fidelity as unverified")
 
+    # 2b. a sealed payload still yields intelligence, and it says so plainly
+    intel_files = [n for n in files2 if n.endswith("_intel.txt")]
+    ok(len(intel_files) == 1, "sealed sample wrote exactly one intel file")
+    if intel_files:
+        intel_text = open(os.path.join(out2, intel_files[0]), encoding="utf-8").read()
+        ok("Nothing here is recovered code" in intel_text,
+           "the intel file never claims to be a recovery")
+        ok("reveal" in intel_text, "the payload's own names reached the intel file")
+        ok(len(intel_text) < 40_000 and "SEALED = b" not in intel_text,
+           "the intel file carries no ciphertext")
+    if reports:
+        data = json.load(open(os.path.join(out2, reports[0]), encoding="utf-8"))
+        ok(bool(data.get("intel")), "the report records the intel summary")
+
     # 3. nothing to unpack is not a recovery
     plain = os.path.join(work, "plain.py")
     with open(plain, "w") as handle:
@@ -134,7 +149,7 @@ def main():
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1
-    print(f"\n{17} checks passed — all good")
+    print(f"\n{21} checks passed — all good")
     return 0
 
 

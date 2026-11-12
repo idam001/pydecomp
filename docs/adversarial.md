@@ -90,24 +90,64 @@ source, it says the source was cleaned in place.  Neither claims a recovery.
 | fidelity | **NOT VERIFIED** | not unpacked |
 | functions of the original script | 0 | 0 |
 | sealed payload found | 4 blobs, 418,159 B | — |
-| original identifiers leaked as readable text | `Item`, `parse_rows`, `summarise`, `report`, `main`, `REPORT_TITLE`, `ALERT_LIMIT`, `CONTACT` | — |
+| names the sealed payload still carries | 400, all from the packer's own loader (`StackSummary`, `tb_frame`, `marshal`, `settrace`) | — |
+| names of the original script recovered | **0** | 0 |
+| `_intel.txt` written | yes — capabilities, name table, 1,876 sealed blobs, 284 CJK filler strings dropped | — |
 
 So the honest answer for this packer today is: **the payload is not recovered**,
 but the analyst gets the packer's identity, the size and count of the sealed
-blobs, the fact that the payload is a marshalled module, and the name set the
-script defines.  That is intelligence; it is not the script, and the tool says so.
+blobs, the fact that the payload is a marshalled module, and what the sealed
+payload still says about itself.  That is intelligence; it is not the script, and
+the tool says so.
+
+### Why "the name set the script defines" was wrong
+
+An earlier revision of this page listed the original script's identifiers
+(`Item`, `parse_rows`, `summarise`, …) as leaked.  They are not.  Each of those
+strings occurs exactly **once** in the lifted loader, inside a disabled comment
+line, so they come from pydecomp's own comment text rather than from the
+payload.  Harvesting the payload's real name table gives 400 identifiers and
+**none of them belong to the original script**: they are the packaging loader's
+own symbols (`sys`, `marshal`, `StackSummary`, `settrace`, `format`, `getattr`).
+The lesson is the one this campaign keeps teaching: a plausible-looking list is
+not evidence.
+
+### What the sealed payload does still give up
+
+`<stem>_intel.txt`, written next to a `_loader` output, reports what survived
+packaging.  On the light build (0.35 s, one code object, 168,806 B of bytecode):
+
+| section | content |
+|---|---|
+| reaches for | `anti-analysis` (`_getframe`, `settrace`, `inspect`), `dynamic-code` (`marshal`, `compile`, `eval`, `setattr`), `decode-layers` (`fromhex`), `filesystem` (`open`, `read`), `subprocess` (`system`) |
+| name table | 400 identifiers, deduplicated, filler removed |
+| sealed blobs | 1,876 |
+| CJK filler strings | 284, counted and dropped |
+
+Capability claims match **whole identifier words only**.  Substring matching
+turned `_walk_tb_with_full_positions` into an `os.walk` claim during
+development, which is exactly the kind of false precision this tool must not
+ship.
+
+Single-byte XOR over the payload's byte constants is implemented but **off by
+default**.  Every filter we tried (printable ratio, word shape, vowel structure,
+alphabet-run rejection) still let 60 noise literals through on this sample, and
+none of the 11 `__nxor2__(b'…', N)` call sites decode to text under any
+single-byte key — the second argument is not the whole key schedule.  Shipping
+it would be a false-positive factory, so the report says it was not applied.
 
 ## What has to be built next
 
 Ordered by what this campaign proved is missing.
 
-1. **Fold the packer's own string decoder (P0).**  The loader defines its decoder
-   in plain sight:
-   `__nxor2__ = lambda data, key: bytes(b ^ key for b in data)` and calls it as
-   `__nxor2__(b'…', 229)`.  A static pass that binds lambdas, evaluates their
-   bodies with the call-site arguments and replaces the call with the resulting
-   literal would expose the loader's strings — the first real crack in this
-   family.  The expression evaluator already interprets function bodies; it
+1. **Recover the packer's real key schedule (P0).**  The decoder is in plain
+   sight: `__nxor2__ = lambda data, key: bytes(b ^ key for b in data)`, and the
+   integer arguments come from `___IdamDegule__('<name>', value, k1, k2)` — a
+   keyed table in the obfuscator itself (source lines 651–800).  Brute-forcing a
+   single byte at the 11 call sites produces no readable text, so the next step
+   is to read that table and replay it, not to widen the search.  Once the
+   decryptor is known, folding the calls into literals is the first real crack
+   in this family.  The expression evaluator already interprets function bodies; it
    needs to be pointed at call sites inside the lifted module.
 2. **Follow the loader's own decryptor into the sealed blobs (P0).**  Once (1)
    works, the keys and the order of operations (`base85 → bz2 → zlib →

@@ -17,6 +17,9 @@ class Artifact:
         self.stalled = False
         self.encrypted_bytes = 0
         self.encrypted_blobs = 0
+        # The sealed code object itself: readable structure even when its
+        # constants are ciphertext.  Intelligence, not recovery.
+        self.payload_code = None
 
     @property
     def is_source(self) -> bool:
