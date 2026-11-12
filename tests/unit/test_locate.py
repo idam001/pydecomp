@@ -1,7 +1,11 @@
-"""Finding the file the operator meant, or saying honestly that it is absent."""
+"""Gate: the tool finds the file itself instead of telling you to paste a command.
+
+A phone that types a name from the downloads folder should not have to copy a
+path back into the shell.  These tests pin the decision: search the device, rank
+what matches, use the newest, and say which one was used and what else matched.
+"""
 import os
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))), "src"))
@@ -14,44 +18,117 @@ def test_expand_strips_quotes_and_expands_home(monkeypatch):
     assert locate.expand("  '~/samples/a.py'  ") == "/home/analyst/samples/a.py"
 
 
-def test_resolve_finds_a_file_in_the_current_directory(tmp_path, monkeypatch):
+def test_the_path_as_given_wins(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     target = tmp_path / "sample.py"
     target.write_text("print(1)\n")
-    assert locate.resolve("sample.py") == str(target)
+    choice = locate.search("sample.py")
+    assert choice is not None and choice.path == str(target)
+    assert choice.direct and choice.reason == "path as given"
 
 
-def test_resolve_is_not_fooled_by_an_ambiguous_name(tmp_path, monkeypatch):
+def test_a_file_outside_the_current_folder_is_found_and_used(tmp_path, monkeypatch):
+    downloads = tmp_path / "storage" / "downloads"
+    downloads.mkdir(parents=True)
+    elsewhere = downloads / "KAMRUL~4.py"
+    elsewhere.write_text("print(2)\n")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    monkeypatch.chdir(tools)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(locate, "SEARCH_DIRS", (".", "~", "~/storage/downloads"))
+    monkeypatch.setattr(locate, "SCAN_ROOTS", ())
+    choice = locate.search("KAMRUL~4.py")
+    assert choice is not None, "the tool gave up instead of searching"
+    assert choice.path == str(elsewhere)
+    assert "found by name" in choice.reason
+    assert not choice.direct
+
+
+def test_the_newest_of_several_matches_is_used_and_the_rest_are_named(
+        tmp_path, monkeypatch):
     first = tmp_path / "a"
     second = tmp_path / "b"
     first.mkdir()
     second.mkdir()
-    (first / "same.py").write_text("x = 1\n")
-    (second / "same.py").write_text("x = 2\n")
-    monkeypatch.chdir(first)
+    old = first / "same.py"
+    old.write_text("x = 1\n")
+    os.utime(old, (1_600_000_000, 1_600_000_000))
+    new = second / "same.py"
+    new.write_text("x = 2\n")
+    here = tmp_path / "here"
+    here.mkdir()
+    monkeypatch.chdir(here)                      # the name is not in the cwd
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(locate, "SEARCH_DIRS", (".", "~"))
-    # two matches, so the tool must refuse to pick one
-    assert locate.resolve("same.py") == str(first / "same.py")   # the cwd copy wins
-    lines = locate.missing("same.py")
-    assert any("share that name" in line or "did you mean" in line for line in lines)
+    monkeypatch.setattr(locate, "SCAN_ROOTS", ())
+    choice = locate.search("same.py")
+    assert choice.path == str(new), "the newest copy should win"
+    assert "newest of 2" in choice.reason
+    assert str(old) in choice.alternatives
 
 
-def test_missing_explains_where_it_looked(tmp_path, monkeypatch):
+def test_pick_overrides_the_ranking(tmp_path, monkeypatch):
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    old = first / "same.py"
+    old.write_text("x = 1\n")
+    os.utime(old, (1_600_000_000, 1_600_000_000))
+    (second / "same.py").write_text("x = 2\n")
+    here = tmp_path / "here"
+    here.mkdir()
+    monkeypatch.chdir(here)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(locate, "SEARCH_DIRS", (".", "~"))
+    monkeypatch.setattr(locate, "SCAN_ROOTS", ())
+    choice = locate.search("same.py", pick=2)
+    assert choice.path == str(old)
+    assert "--pick 2" in choice.reason
+
+
+def test_case_only_differences_still_match(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    (tmp_path / "Sample.py").write_text("x = 1\n")
+    monkeypatch.setattr(locate, "SEARCH_DIRS", (".",))
+    choice = locate.search("sample.PY")
+    assert choice is not None and choice.path.endswith("Sample.py")
+    assert "ignoring case" in choice.reason
+
+
+def test_a_typo_resolves_to_the_closest_name(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "real.py").write_text("x = 1\n")
+    monkeypatch.setattr(locate, "SEARCH_DIRS", (".",))
+    choice = locate.search("reel.py")
+    assert choice is not None and choice.path.endswith("real.py")
+
+
+def test_nested_files_are_reached_by_the_scan(tmp_path, monkeypatch):
+    deep = tmp_path / "storage" / "downloads" / "archive" / "deep"
+    deep.mkdir(parents=True)
+    target = deep / "buried.py"
+    target.write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(locate, "SEARCH_DIRS", (".",))
+    monkeypatch.setattr(locate, "SCAN_ROOTS", ("~",))
+    choice = locate.search("buried.py")
+    assert choice is not None and choice.path == str(target)
+    assert "scanning" in choice.reason
+
+
+def test_nothing_found_never_tells_the_operator_to_type_the_command(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(locate, "SEARCH_DIRS", (".",))
+    monkeypatch.setattr(locate, "SCAN_ROOTS", ())
     lines = locate.missing("ghost.py")
-    assert lines[0] == "file not found: ghost.py"
-    assert any("looked in" in line for line in lines)
-    assert any("ls " in line for line in lines)
-
-
-def test_missing_offers_a_pasteable_command(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "real.py").write_text("print(1)\n")
-    lines = locate.missing("reel.py")          # a typo, close enough to spot
-    text = "\n".join(lines)
-    joined = " ".join(lines)
-    assert "real.py" in joined or "did you mean" not in joined
+    text = " ".join(lines)
+    assert "nothing named ghost.py" in text
+    assert "paste" not in text
+    assert "python pydecomp" not in text
+    assert "what I can see right now" in text or "no python samples" in text
 
 
 def test_a_directory_is_reported_as_a_directory(tmp_path, monkeypatch):
@@ -59,9 +136,4 @@ def test_a_directory_is_reported_as_a_directory(tmp_path, monkeypatch):
     (tmp_path / "samples").mkdir()
     lines = locate.missing("samples")
     assert any("folder, not a file" in line for line in lines)
-
-
-def test_sample_command_uses_a_relative_home(monkeypatch):
-    monkeypatch.setenv("HOME", "/home/analyst")
-    command = locate.sample_command("/home/analyst/samples/a.py", "/home/analyst/out")
-    assert "'~/samples/a.py'" in command and "-o /home/analyst/out" in command
+    assert locate.search("samples") is None

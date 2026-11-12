@@ -15,7 +15,7 @@ from ..terminal.color import (
     BOLD, CYAN, GREEN, GREY, RED, WHITE,
     YELLOW, ellipsis, paint,
 )
-from ..terminal.locate import missing, resolve
+from ..terminal.locate import missing, search
 from ..terminal.panel import panel
 from ..triage.payload import summary as summary_intel
 from ..triage.report import analyse_recovered, render_report, write_reports
@@ -55,20 +55,27 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
                 reports: bool = True, verify: bool = False, yara: bool = False,
                 diff: bool = False,
                 dry_run: bool = False, neutralize: bool = False,
-                fast: bool = False) -> str | None:
+                fast: bool = False, pick: int | None = None) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
     started = time.time()
     requested = str(src_path)
-    found = resolve(requested)
-    if found is None:
+    # The tool does the looking.  If a file is visible anywhere the search
+    # reaches, it is used - the operator is told which one and why, never told
+    # to retype a command.
+    choice = search(requested, pick=pick)
+    if choice is None:
         lines = missing(requested, out_dir)
         emit(paint("✘", RED) + " " + paint(lines[0], RED))
         for line in lines[1:]:
-            tint = CYAN if line.startswith(("did you mean", "paste:", "found")) else GREY
+            tint = CYAN if line.startswith(("give me", "searched")) else GREY
             emit(paint("  " + line, tint))
         return None
-    if os.path.abspath(os.path.expanduser(requested.strip().strip("'\""))) != found:
-        emit(paint("i", CYAN, BOLD) + " " + paint("using ", GREY) + paint(found, CYAN))
+    found = choice.path
+    if not choice.direct:
+        emit(paint("i", CYAN, BOLD) + " " + paint("using ", GREY)
+             + paint(found, CYAN) + paint("  — " + choice.reason, GREY))
+        for other in choice.alternatives:
+            emit(paint("    also matched: " + other, GREY))
     src_path = found
     if not os.path.isfile(src_path):
         print("   " + paint("✘", RED) + " " + paint(f"file not found: {src_path}", RED))

@@ -83,6 +83,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="keep the untouched input bytes next to the output")
     ap.add_argument("--neutralize", action="store_true",
                     help="disable anti-VM/anti-debug/expiry guards in the output")
+    ap.add_argument("--pick", type=int, default=None, metavar="N",
+                    help="when several files share a name, take the Nth newest "
+                         "(default: the newest, and say so)")
     ap.add_argument("--fast", action="store_true",
                     help="skip the expensive proofs (opaque-predicate solving); "
                          "identical output for clean files")
@@ -115,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
                                        yara=args.yara,
                                        diff=args.diff,
                                        verify=args.verify, dry_run=args.dry_run,
-                                       neutralize=args.neutralize, fast=args.fast)
+                                       neutralize=args.neutralize, fast=args.fast,
+                                       pick=args.pick)
             return 0 if written else 1
         path = deobfuscate(args.file, args.out, clean=not args.no_clean,
                            keep_artifacts=args.artifacts,
@@ -123,7 +127,8 @@ def main(argv: list[str] | None = None) -> int:
                            yara=args.yara,
                            diff=args.diff,
                            verify=args.verify, dry_run=args.dry_run,
-                           neutralize=args.neutralize, fast=args.fast)
+                           neutralize=args.neutralize, fast=args.fast,
+                           pick=args.pick)
         if path and args.verify:
             try:
                 try:

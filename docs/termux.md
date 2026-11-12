@@ -197,26 +197,41 @@ identifies them — `saved to  …/out/KAMRUL~4_deob.py` rather than a cut-off
 directory name.  Everything fits inside the width; nothing is ever drawn wider
 than the window.
 
-## "file not found" now tells you where to look
+## "file not found" is gone — the tool finds the file itself
 
-If the name you paste is not where the shell is standing, you no longer just get
-a red line.  The tool searches the places a phone actually keeps downloads
-(`~/storage/downloads`, `~/storage/shared`, `~/Download`, `/sdcard/Download`,
-the current folder, your home) and answers with something you can paste:
+Typing a name from the downloads folder used to earn a red line and a command to
+paste.  That was backwards: if the file can be seen, it can be used.  The tool
+now searches, ranks what matches and carries on:
 
 ```
-   ✘ file not found: KAMRUL~4.py
-     looked in: /data/data/com.termux/files/home/tools
-     did you mean: /data/data/com.termux/files/home/storage/downloads/KAMRUL~4.py
-     paste: python pydecomp.py '~/storage/downloads/KAMRUL~4.py' -o ~/out
+   i using ~/storage/downloads/KAMRUL~4.py  — found by name — newest of 2
+       also matched: ~/Download/Telegram/KAMRUL~4.py
+   ▸ Decompiling KAMRUL~4.py
 ```
 
-- If exactly one file has that name, it is used and announced:
-  `i using /…/storage/downloads/KAMRUL~4.py`.
-- If **two** files share the name it refuses to guess and lists them.
-- If you pointed at a folder, it says so and shows what is inside.
+The order it tries:
 
-So `KAMRUL~4.py` works from any folder once it is in a scans/listings location.
+1. the path exactly as typed;
+2. the name in the current folder;
+3. an exact name match anywhere it searches (`~/storage/downloads`,
+   `~/storage/shared`, `~/Download`, `~/Downloads`, `/sdcard/Download`,
+   `/storage/emulated/0`, `/tmp`, and one level inside each);
+4. the same name in another case;
+5. the closest name, if the typed one is a typo;
+6. a bounded scan of home and shared storage, four levels deep.
+
+When several files qualify, **the newest under your home wins**, the others are
+listed, and `--pick N` takes the Nth newest instead.  `PYDECOMP_PATHS`
+(`:`) pins the search space.
+
+There is no "paste this command" line any more.  When nothing matches, the tool
+reports what it searched and **what it can see right now**, and stops:
+
+```
+   ✘ nothing named NOTHERE.py anywhere I searched
+     searched: /data/data/com.termux/files/home/tools, /sdcard/Download
+     what I can see right now: KAMRUL~4.py (12,483 B) · notes.py (240 B)
+```
 
 ## If a command "does not exist"
 
@@ -226,7 +241,7 @@ So `KAMRUL~4.py` works from any folder once it is in a scans/listings location.
 | `pydecomp` → *command not found* | the alias was written to `~/.bashrc` in a shell that had already started | `source ~/.bashrc`, or open a new session |
 | `./pydecomp.py` → *bad interpreter* | Android has no `/usr/bin/env` | `python pydecomp.py` |
 | `python pydecomp.py` shows the **menu** instead of a result | no path was given, which is how you ask for the menu | `python pydecomp.py sample.py -o ~/out` |
-| `✘ file not found: KAMRUL~4.py` | the shell was in `~/tools`, the file is in the downloads folder | `python pydecomp.py '~/storage/downloads/KAMRUL~4.py' -o ~/out` — or just re-run: the tool now offers the match |
+| name typed from the wrong folder | nothing — the tool searches the phone and uses the newest match, printing which | re-run with `--pick 2` to take a different one |
 
 ## Flags that matter on a phone
 

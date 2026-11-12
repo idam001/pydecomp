@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### It finds the file; it no longer hands you a command
+
+A phone typing `KAMRUL~4.py` from `~/tools` used to get a red line and
+`paste: python pydecomp.py '~/storage/downloads/…'` - telling the operator to do
+the work they asked the tool to do. That whole path is gone.
+
+- `terminal/locate.py` now *decides*: exact path, current folder, exact name
+  anywhere it searches, case-blind, closest typo, then a bounded scan of home and
+  shared storage four levels deep. One level below each search folder is included,
+  which is where phones actually keep the second copy.
+- Several matches? The **newest under your home** is used, the rest are listed as
+  `also matched:`, and `--pick N` overrides. Ranking prefers the operator's own
+  folders over stale copies in `/tmp`.
+- `PYDECOMP_PATHS` pins the search space (CI and sandboxes).
+- Nothing matches? The report names what was searched and **what is visible**
+  (`what I can see right now: KAMRUL~4.py (12,483 B) · …`) - no command, no
+  `paste:`, no `ls` homework.
+- 10 unit tests rewritten plus 5 new terminal checks (end-to-end: an out-of-folder
+  ambiguous name is resolved, processed, and the alternative named).
+
 ### Four "impossible" cases, removed
 
 The limits page listed run-time keys, native containers, `import os` and

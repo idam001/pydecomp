@@ -106,10 +106,46 @@ def main():
     ghost = subprocess.run([sys.executable, bundle, "NOTHERE.py", "--no-color",
                             "--no-anim"], capture_output=True, text=True, cwd=work,
                            env={**os.environ, "COLUMNS": "47", "NO_COLOR": "1"})
-    ok("file not found" in ghost.stdout, "a missing file is named")
-    ok("looked in" in ghost.stdout, "the current directory is named")
-    ok("ls " in ghost.stdout or "did you mean" in ghost.stdout,
-       "the operator is told what to do next")
+    ok("nothing named" in ghost.stdout, "a missing file is named")
+    ok("searched" in ghost.stdout, "the places searched are named")
+    ok("python pydecomp" not in ghost.stdout and "paste:" not in ghost.stdout,
+       "the operator is never told to retype the command themselves")
+    ok("what I can see" in ghost.stdout or "no python samples" in ghost.stdout,
+       "the tool reports what it can see instead of asking for a command")
+
+    # 6. an ambiguous name is resolved by the tool, not handed back to the operator
+    home = os.path.join(work, "home")
+    downloads = os.path.join(home, "storage", "downloads")
+    telegram = os.path.join(home, "Download", "Telegram")
+    os.makedirs(downloads)
+    os.makedirs(telegram)
+    older = os.path.join(telegram, "KAMRUL~4.py")
+    with open(older, "w") as handle:
+        handle.write("print('older copy')\n")
+    os.utime(older, (1_600_000_000, 1_600_000_000))
+    newer = os.path.join(downloads, "KAMRUL~4.py")
+    with open(newer, "w") as handle:
+        handle.write("print('newer copy')\n")
+    tools = os.path.join(home, "tools")
+    os.makedirs(tools)
+    out6 = os.path.join(work, "picked_out")
+    picked = subprocess.run([sys.executable, bundle, "KAMRUL~4.py", "-o", out6,
+                             "--no-color", "--no-anim"],
+                            capture_output=True, text=True, cwd=tools,
+                            env={**os.environ, "HOME": home, "COLUMNS": "100",
+                                 "NO_COLOR": "1",
+                                 # pin the search space: other tests leave copies in /tmp
+                                 "PYDECOMP_PATHS": os.pathsep.join(
+                                     [home, downloads, telegram])})
+    ok(picked.returncode == 0, "an out-of-folder name still runs")
+    ok("using " in picked.stdout and "newest of 2" in picked.stdout,
+       "the tool picks the newest match and says so")
+    ok(older in picked.stdout, "the other match is named, not hidden")
+    ok("paste:" not in picked.stdout and "python pydecomp" not in picked.stdout,
+       "no command is handed back to the operator")
+    written = os.listdir(out6) if os.path.isdir(out6) else []
+    ok(any(entry.endswith("_copy.py") for entry in written),
+       "the file it picked was actually processed")
 
     if FAILED:
         print(f"\n{len(FAILED)} failed")
