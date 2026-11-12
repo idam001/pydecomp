@@ -43,7 +43,9 @@ w("t6_hex_join.py",
   "import binascii\ncode = ''.join(['%s','%s'])\nexec(bytearray.fromhex(code).decode())\n"
   % (b.hex()[:20], b.hex()[20:]))
 # 7. gzip + reversed whole source
-_rev = base64.b64encode(gzip.compress(b)).decode()[::-1]
+# mtime=0: gzip stamps the current time by default, which makes the fixture
+# (and therefore `--check`) change every time it is rebuilt.
+_rev = base64.b64encode(gzip.compress(b, mtime=0)).decode()[::-1]
 w("t7_gzip_rev.py",
   "import gzip,base64\nexec(gzip.decompress(base64.b64decode('%s'[::-1])))\n" % _rev)
 # 8. plain source, no layers
