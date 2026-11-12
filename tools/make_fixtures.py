@@ -29,11 +29,18 @@ GENERATORS = [
 ]
 
 
+# Files that are generated but not committed: a .pyc embeds the interpreter
+# version, so it changes with the runtime rather than with the fixture, and it
+# is ignored by git.  Counting it made --check fail on the first run in a fresh
+# clone (the clone has no .pyc until a generator creates one).
+IGNORED_SUFFIXES = (".pyc",)
+
+
 def fingerprint(folder: pathlib.Path) -> str:
-    """A stable hash of every file a fixture directory contains."""
+    """A stable hash of every committed-shaped file a fixture directory holds."""
     digest = hashlib.sha256()
     for path in sorted(folder.rglob("*")):
-        if path.is_file():
+        if path.is_file() and path.suffix not in IGNORED_SUFFIXES:
             digest.update(path.relative_to(folder).as_posix().encode())
             digest.update(path.read_bytes())
     return digest.hexdigest()[:16]
