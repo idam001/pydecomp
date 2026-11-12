@@ -27,13 +27,30 @@ def _mk_whitelist() -> dict[str, tuple[Any, str]]:
         for n in names:
             w[n] = (fn, label)
 
+    def _b64_any(s, *a, **k):
+        """b64, url-safe b64, with or without padding.
+
+        Loaders are sloppy in exactly three ways, and all three used to make the
+        static evaluator give up on a chain it could have finished: they use the
+        url-safe alphabet and call the plain decoder, they call the url-safe
+        decoder on plain text, and they strip the '=' padding (often to fit the
+        blob on one line).  Accepting all of it costs an alphabet swap and a
+        pad; refusing it loses the payload.
+        """
+        data = to_bytes(s).strip()
+        data = data.replace(b"-", b"+").replace(b"_", b"/")
+        data += b"=" * (-len(data) % 4)
+        return base64.b64decode(data, validate=False)
+
     add(["base64.b64decode", "base64.standard_b64decode",
-         "base64.urlsafe_b64decode", "binascii.a2b_base64"],
-        lambda s, *a, **k: base64.b64decode(to_bytes(s)),
-        "base64")
+         "base64.urlsafe_b64decode", "binascii.a2b_base64"], _b64_any, "base64")
+
+    def _b32_any(s, *a, **k):
+        data = to_bytes(s).strip()
+        return base64.b32decode(data + b"=" * (-len(data) % 8))
+
     add(["base64.b32decode", "base64.b32hexdecode", "binascii.a2b_base32"],
-        lambda s, *a, **k: base64.b32decode(to_bytes(s)),
-        "base32")
+        _b32_any, "base32")
     add(["base64.b16decode", "binascii.a2b_hex", "binascii.unhexlify"],
         lambda s, *a, **k: base64.b16decode(to_bytes(s).upper()),
         "base16")

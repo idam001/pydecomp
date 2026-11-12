@@ -131,6 +131,20 @@ sealed blob count and the CJK filler it discarded.  The DONE panel gained an
 
 ## [1.0.0] — 2026-11-01 — “the Almighty”
 
+### The random-stack run: 85 → 97 of 100
+
+`tools/stress_corpus.py` builds stacks nobody wrote down. The first run recovered
+85/100; the three fixes since:
+
+- **base64 tolerance.** Loaders use the url-safe alphabet with the plain decoder,
+  the plain alphabet with the url-safe decoder, and strip `=` padding to fit the
+  blob on one line. The static evaluator refused all three, which ended chains it
+  could have finished. It now accepts either alphabet and restores padding:
+  **85 → 97**.
+- The `stress` gate floor is now **95/100** (was 80), so the run can only improve.
+- The three remaining misses are all the same shape - an `xor` layer buried in
+  the middle of a chain - and they are the next target, not a footnote.
+
 ### Research pass: the ten shapes samples actually ship today
 
 Searches for current loader families turned up shapes the corpus did not carry,

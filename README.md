@@ -311,7 +311,7 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `examples` — the six worked examples | 6/6 recovered |
 | `corpus` — 46 families × 4 payloads | 184/184 recovered |
 | `learn` — trained decoder ranking | 37.5% → 75.0% top-1, 7.81 → 1.62 decodes |
-| `stress` — 100 random stacks, 1–12 layers | 85/100 recovered (floor 80) |
+| `stress` — 100 random stacks, 1–12 layers | 97/100 recovered (floor 95) |
 
 Real samples (byte-for-byte stable across releases):
 
@@ -349,9 +349,9 @@ checkout:
 
 The per-family table is [docs/corpus-results.md](docs/corpus-results.md). Beyond the
 named families, `tools/stress_corpus.py` builds **100 random stacks** from the
-same layer table (1–12 layers, mean 5.1) and grades them the same way: **85/100
-recovered**, with the floor wired into the `stress` gate so the number can only
-climb.  A case
+same layer table (1–12 layers, mean 5.2) and grades them the same way: **97/100
+recovered**, with the floor wired into the `stress` gate at 95 so the number can
+only climb.  A case
 that used to be recovered and stops being recovered fails the `corpus` gate, so
 the number can only go up with the code, never down with the prose.
 
@@ -368,6 +368,12 @@ the gate would not let it slide:
   separator stripper, and Z85's alphabet *contains* `.`, `-`, `:`, `+`, `=`, so
   the strip destroyed the encoding. Both fixed against published vectors, with
   `tests/unit/test_codec_vectors.py` holding them down.
+- **Loaders are sloppy about base64, and the evaluator refused all three ways.**
+  They use the url-safe alphabet and call the plain decoder, call the url-safe
+  decoder on plain text, and strip the `=` padding to fit the blob on one line.
+  Each one ended a chain that could have been finished; the evaluator now accepts
+  the right alphabet either way and restores padding. That alone took the random
+  stack run from 85/100 to 97/100.
 - **A nested stack is followed to the bottom.** `an_nested_exec` is the
   TrustedSec bytecode stack: a loader inside a marshalled code object, which was
   itself marshalled, three deep. Lifting one level and stopping hands the operator

@@ -44,8 +44,11 @@ MC = _corpus_module()
 # only layers whose loader line is real Python: the alphabet codecs are spelled
 # out per family (base58/45/z85/uu) and have no one-line expression, so a random
 # stack must not pretend to use them
+# `escapes` needs text on its input, so it is only valid as the innermost layer;
+# a random stack has no idea where that is, and pretending otherwise builds
+# samples that would not run at all.  It stays in the corpus, out of the fuzz.
 LAYERS = ["b64", "b64url", "base32", "base85", "a85", "hex", "zlib", "lzma",
-          "gzip", "bz2", "reverse", "rot13", "xor5a", "xor33", "escapes"]
+          "gzip", "bz2", "reverse", "rot13", "xor5a", "xor33"]
 
 
 def build(seed: int, run: int) -> tuple[str, bytes, str]:
@@ -98,7 +101,7 @@ def grade(loader: str, payload: bytes) -> dict:
 
 
 #: the share of random stacks that must come back recovered
-FLOOR = 0.80
+FLOOR = 0.95
 
 
 def main(argv: list[str]) -> int:
