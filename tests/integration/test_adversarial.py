@@ -174,10 +174,44 @@ def main():
        "a free name compared to a literal is not treated as an opaque predicate")
     ok("word == 34" in body4, "the live elif survived cleaning")
 
+    # 5. a key computed at run time is enumerated, not declared impossible
+    runtime_key = os.path.join(work, "runtime_key.py")
+    secret = 'print("runtime-key-recovered-77aa")'
+    with open(runtime_key, "w") as handle:
+        handle.write("import os\n"
+                     "_k = len(os.urandom(16))\n"
+                     f"_d = {bytes(byte ^ 16 for byte in secret.encode())!r}\n"
+                     "exec(bytes(c ^ _k for c in _d).decode())\n")
+    out5 = os.path.join(work, "runtime_key_out")
+    done5 = run(runtime_key, out5)
+    ok(done5.returncode == 0, "runtime-key sample runs")
+    ok("run-time key" in done5.stdout, "the enumeration is reported, not hidden")
+    body5 = "".join(open(os.path.join(out5, name5), encoding="utf-8").read()
+                    for name5 in (os.listdir(out5) if os.path.isdir(out5) else [])
+                    if name5.endswith(".py"))
+    ok("runtime-key-recovered-77aa" in body5, "the run-time key was enumerated and opened")
+    ok("copy — nothing unpacked" not in done5.stdout,
+       "an enumerated payload is a recovery, not a copy")
+
+    # 6. a payload inside a native blob is carved out
+    native = os.path.join(work, "packed.so")
+    inner = compile('print("carved-native-4b1c")', "<payload>", "exec")
+    with open(native, "wb") as handle:
+        handle.write(os.urandom(1024) + zlib.compress(marshal.dumps(inner))
+                     + os.urandom(128))
+    out6 = os.path.join(work, "native_out")
+    done6 = run(native, out6)
+    ok(done6.returncode == 0, "native blob runs")
+    ok("carved a" in done6.stdout, "the carve stage reports what it found")
+    body6 = "".join(open(os.path.join(out6, name6), encoding="utf-8").read()
+                    for name6 in (os.listdir(out6) if os.path.isdir(out6) else [])
+                    if name6.endswith(".py"))
+    ok("carved-native-4b1c" in body6, "the carved payload was recovered")
+
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1
-    print(f"\n{25} checks passed — all good")
+    print(f"\n{31} checks passed — all good")
     return 0
 
 

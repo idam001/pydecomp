@@ -270,3 +270,81 @@ class _FakeSys:
 
     def getdefaultencoding(self):
         return "utf-8"
+
+
+class _FakePath:
+    """``os.path`` as pure string arithmetic, nothing else.
+
+    Path joins are the most common reason a loader cannot be evaluated at all:
+    ``import os`` came first, the import was refused, and every statement after
+    it was lost.  The helpers below are pure functions of their arguments, so
+    they can be answered exactly; anything that would touch the real filesystem
+    raises ``_ExprRefuse``.
+    """
+
+    sep = "/"
+    altsep = None
+    curdir = "."
+    pardir = ".."
+    extsep = "."
+    pathsep = ":"
+    defpath = "/bin:/usr/bin"
+
+    @staticmethod
+    def join(*parts):
+        pieces = [str(part) for part in parts if str(part)]
+        if not pieces:
+            return ""
+        return "/".join(piece.strip("/") or "/" for piece in pieces).replace("///", "/")
+
+    @staticmethod
+    def split(path):
+        path = str(path).replace("\\\\", "/")
+        head, _, tail = path.rpartition("/")
+        return (head or "", tail)
+
+    @staticmethod
+    def dirname(path):
+        return _FakePath.split(path)[0]
+
+    @staticmethod
+    def basename(path):
+        return _FakePath.split(path)[1]
+
+    @staticmethod
+    def splitext(path):
+        name = _FakePath.basename(path)
+        stem, dot, extension = name.rpartition(".")
+        if not dot or not stem:
+            return (str(path), "")
+        return (str(path)[: len(str(path)) - len(extension) - 1], "." + extension)
+
+    @staticmethod
+    def normpath(path):
+        return str(path).replace("//", "/")
+
+
+class _FakeOS:
+    """``os`` as a name, never as a capability.
+
+    Every attribute that could touch the machine - ``system``, ``popen``,
+    ``remove``, ``environ``, ``getenv``, ``urandom`` - refuses instead of
+    answering, and the refusal is what tells the caller "this value only exists
+    at run time".
+    """
+
+    name = "posix"
+    sep = "/"
+    altsep = None
+    curdir = "."
+    pardir = ".."
+    extsep = "."
+    linesep = "\n"
+    pathsep = ":"
+    devnull = "/dev/null"
+
+    def __init__(self) -> None:
+        self.path = _FakePath()
+
+    def __getattr__(self, item):
+        raise _ExprRefuse(f"os.{item}")

@@ -189,7 +189,18 @@ def _follow_expression_payload(source: str, trace: list, depth: int, seen: set,
     except Exception:                                # noqa: BLE001 - never fail a run
         return None
     if resolved is None:
-        return None
+        # The loader may derive its key from something that only exists at run
+        # time.  The key *space* is still tiny, so enumerate it and keep the
+        # candidate whose payload is structurally valid.
+        try:
+            from ..eval.keyhunt import describe as describe_key, hunt
+            found = hunt(source)
+        except Exception:                            # noqa: BLE001
+            found = None
+        if found is None:
+            return None
+        trace.append(describe_key(found))
+        resolved = (found["kind"], found["payload"])
     kind, value = resolved
     if kind == "code":
         version, code = value
@@ -198,6 +209,9 @@ def _follow_expression_payload(source: str, trace: list, depth: int, seen: set,
                      f"3.{version[1]} · {len(code.code):,} B bytecode")
         found = _from_code(code, version, trace, depth + 1, seen, max_depth)
         if found is not None:
+            # A payload *was* extracted: this artifact is a recovery of the
+            # input, never a copy of it.
+            found.unchanged = False
             return found
         return None
     blob = value.encode("utf-8", "surrogateescape") if isinstance(value, str) else value
@@ -208,12 +222,16 @@ def _follow_expression_payload(source: str, trace: list, depth: int, seen: set,
         if digest in seen:
             return None
         seen.add(digest)
-        return _follow_source(value, trace, depth + 1, seen, max_depth)
+        found = _follow_source(value, trace, depth + 1, seen, max_depth)
+        if found is not None:
+            found.unchanged = False       # decoded from a computed expression
+        return found
     # let the digester register this digest itself - adding it here made the
     # very next call treat the payload as already visited and return None
     for candidate in _payload_variants(blob):
         found = _digest_bytes(candidate, trace, depth + 1, seen, max_depth)
         if found is not None:
+            found.unchanged = False       # decoded from a computed expression
             return found
     return None
 
@@ -413,6 +431,23 @@ def dig(raw: bytes, name: str = "input", max_depth: int = 8) -> Artifact:
             text = early if early.endswith("\n") else early + "\n"
             return Artifact(text, "source", trace, _score(text, "source"))
     found = _digest_bytes(raw, trace, 0, set(), max_depth)
+    if found is None:
+        # Native containers (compiled extensions, one-file executables,
+        # licensing runtimes) hold their Python layer as bytes with no Python
+        # syntax around them.  Carve it out by structure before giving up.
+        try:
+            from .carve import carve
+            carved = carve(raw)
+        except Exception:                            # noqa: BLE001
+            carved = []
+        for offset, how, payload in carved[:8]:
+            trace.append(f"carved a {how} at offset {offset:,} ({len(payload):,} B)")
+            deeper = _digest_bytes(payload, trace, 1, set(), max_depth)
+            if deeper is not None:
+                deeper.unchanged = False
+                return deeper
+        if carved:
+            trace.append(f"carved {len(carved)} candidate(s) — none of them opened")
     if found is None:
         text = _as_text(raw)
         if text is not None and looks_like_python(text):

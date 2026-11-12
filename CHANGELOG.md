@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Four "impossible" cases, removed
+
+The limits page listed run-time keys, native containers, `import os` and
+statement-level refusals as things pydecomp could not do. Three of the four are
+now covered, and the fourth is downgraded to "needs the VM's dispatch table".
+
+- **Run-time key enumeration** (`eval/keyhunt.py`). When the key only exists
+  while the sample runs, the *space* is still small: `len(os.urandom(16))` is 16,
+  a byte XOR key is one of 256. The space is inferred from the expression, each
+  candidate is evaluated, and a candidate wins only when its payload parses as
+  Python or marshals into a code object. `_k = len(os.urandom(16))` now recovers
+  in 0.1 s, including when the real key is not the derived length at all.
+- **Payload carving** (`engine/carve.py`). Embedded pyc, zlib/bz2/gzip/lzma
+  streams, zip containers and long base64/base85 literals are found at any
+  offset inside a binary, validated, and digested — so a packed native blob no
+  longer ends as a string dump.
+- **`os` and `os.path` emulated** as names rather than capabilities: path
+  arithmetic is answered exactly, everything that could touch the machine
+  refuses. `import os` no longer aborts evaluation of a loader.
+- **The statement walker keeps going after a refusal** and keeps the captured
+  payload; previously an un-evaluable statement such as `_k = len(os.urandom(16))`
+  aborted the module before the `exec` was ever reached.
+- **Payload extraction is no longer reported as a copy.** An expression payload
+  that resolves to a nested source used to inherit `unchanged` from the inner
+  file, so a correctly recovered program was labelled "copy — nothing unpacked".
+- 15 unit tests (`test_keyhunt.py`, `test_carve.py`) and 6 more adversarial
+  checks (31 total). `docs/limits.md` rewritten around what is now handled.
+
 ### A deleted branch, and the soundness bug behind it
 
 Cleaning a plain, unobfuscated program deleted a live `elif` and still reported

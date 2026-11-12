@@ -27,7 +27,7 @@ from ..bytecode.codeobj import CodeObj
 from ..bytecode.marshal_reader import _MarshalProxy, parse_marshal_blob
 from ..eval.builtins import _safe_builtin, _safe_compile
 from ..eval.namespace import (
-    _BuiltinsModule, _CryptoModule, _FakeSys, _ImportlibModule, _NameSpace,
+    _BuiltinsModule, _CryptoModule, _FakeOS, _FakeSys, _ImportlibModule, _NameSpace,
 )
 from ..eval.sentinel import _EXEC_SENTINELS, _ExecSentinel
 from ..exceptions import _ExprCaptured, _ExprRefuse
@@ -61,7 +61,7 @@ def _coerce_payload(value):
 EXPR_MODULES = {"sys", "base64", "zlib", "marshal", "codecs", "binascii", "lzma",
                 "builtins", "importlib", "imp", "Crypto", "Cryptodome", "cryptography",
                 "bz2", "hashlib", "json", "struct", "string", "math", "itertools",
-                "collections", "re", "operator", "functools", "types", "copy"}
+                "collections", "re", "operator", "functools", "types", "copy", "os"}
 
 EXPR_BUILTINS = {name: getattr(builtins, name) for name in (
     "getattr", "setattr", "vars", "str", "bytes", "bytearray", "int", "float", "bool",
@@ -80,9 +80,14 @@ class ExprEval:
     payload those calls would have received.
     """
 
-    def __init__(self, libraries=True, target_version: str | None = None):
+    def __init__(self, libraries=True, target_version: str | None = None,
+                 overrides: dict | None = None):
         self.libraries = libraries
         self.target_version = target_version
+        # Values the caller has *fixed*: an obfuscator that computes its key at
+        # run time cannot be evaluated, so the caller substitutes candidates and
+        # the module's own assignment must not overwrite them.
+        self.fixed = dict(overrides or {})
         self.ns = dict(EXPR_BUILTINS)
         self._globals = _NameSpace(self, "globals")
         self._builtins_view = _NameSpace(self, "builtins")
@@ -93,6 +98,7 @@ class ExprEval:
                         "vars": self.vars_of, "dir": self.dir_of,
                         "compile": _safe_compile, "__doc__": None,
                         "__file__": "<obfuscated>", "__spec__": None})
+        self.ns.update(self.fixed)          # substituted key material
         self.marshal = _MarshalProxy()
         self.calls = 0
         self.steps = 0
@@ -134,7 +140,14 @@ class ExprEval:
             return capture.payload
         except (_ExprRefuse, Exception):             # noqa: BLE001 - best effort
             pass
-        self.exec_block(tree.body, self.ns, tolerant=True)
+        # A statement that cannot be evaluated (``_k = len(os.urandom(16))``)
+        # used to abort the whole module, so a payload built further down was
+        # never reached.  The tolerant pass keeps going - and it catches the
+        # capture too, which previously escaped and lost the payload entirely.
+        try:
+            self.exec_block(tree.body, self.ns, tolerant=True)
+        except _ExprCaptured as capture:
+            return capture.payload
         return None
 
     def exec_block(self, body, scope, tolerant=False):
@@ -175,12 +188,18 @@ class ExprEval:
                     pass
             return
         if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name) and target.id in self.fixed:
+                    continue
             value = self.eval(stmt.value, scope)
             for target in stmt.targets:
+                if isinstance(target, ast.Name) and target.id in self.fixed:
+                    continue
                 self.bind(target, value, scope)
             return
         if isinstance(stmt, ast.AnnAssign):
-            if stmt.value is not None:
+            if stmt.value is not None and not (isinstance(stmt.target, ast.Name)
+                                               and stmt.target.id in self.fixed):
                 self.bind(stmt.target, self.eval(stmt.value, scope), scope)
             return
         if isinstance(stmt, ast.AugAssign):
@@ -532,7 +551,7 @@ class ExprEval:
                 "json": json, "struct": struct, "string": string, "math": math,
                 "itertools": itertools, "collections": collections, "re": re,
                 "operator": operator, "functools": functools, "types": types,
-                "copy": copy, "marshal": self.marshal}.get(name)
+                "copy": copy, "marshal": self.marshal, "os": _FakeOS()}.get(name)
 
     def _call(self, node, env):
         self.calls += 1
@@ -625,8 +644,9 @@ def _payload_score(kind: str, value) -> float:
     return 0.0
 
 
-def _evaluate_source(tree: ast.AST, target_version: str | None):
-    engine = ExprEval(target_version=target_version)
+def _evaluate_source(tree: ast.AST, target_version: str | None,
+                     overrides: dict | None = None):
+    engine = ExprEval(target_version=target_version, overrides=overrides)
     try:
         payload = engine.run_module(tree)
     except (_ExprRefuse, _ExprCaptured, Exception):   # noqa: BLE001 - best effort
@@ -634,7 +654,7 @@ def _evaluate_source(tree: ast.AST, target_version: str | None):
     return payload
 
 
-def resolve_expression_payload(source: str):
+def resolve_expression_payload(source: str, overrides: dict | None = None):
     """Try to evaluate a source file's own payload expression.
 
     Returns ``("code", (version, CodeObj))``, ``("text", str)``,
@@ -651,7 +671,7 @@ def resolve_expression_payload(source: str):
         attempts.append(None)                       # also try the stub default
     best: tuple[float, str, object] | None = None
     for candidate in attempts[:3]:
-        payload = _evaluate_source(tree, candidate)
+        payload = _evaluate_source(tree, candidate, overrides)
         if payload is None:
             continue
         coerced = _coerce_payload(payload)
