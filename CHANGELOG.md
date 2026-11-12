@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The loop that stopped at a thousand, and said nothing
+
+The random-stack harness grew the alphabet codecs and a depth axis to 24, and
+went from 200/200 to 193/200. The seven misses were all the same bug, and it was
+not in the decoders - it was in the simulation:
+
+- **A simulated `while` loop was capped at 1000 rounds, silently.** A base45
+  loader walks one round per three characters, so a 3 KB blob is a 1125-round
+  loop. The analyser ran 1000 rounds, decoded the *fragment*, and carried on as
+  if it had the answer. A `for` loop over a long blob was sliced at 20000 items
+  with the same effect. Both now raise `EvalFailed` when they cannot finish, so
+  an unfinished decode leaves no value behind: the chain ends honestly instead of
+  ending wrong. `MAX_LOOP_ROUNDS` is 200000 and the statement budget follows it.
+- **A loader function with no `return` was unreadable.** `_call_function` needs a
+  return value, and the loaders that matter most have none - they decode into a
+  name and `exec` it. `Evaluator.run_function` simulates the body and reports the
+  local namespace, and `peel._namespace_payloads` offers whatever the statements
+  and the called functions left behind. That is what makes a `def _go():` wrapper
+  (the shape most packers emit) peelable at all.
+- **Only modules that execute are loaders.** `_namespace_payloads` refuses a
+  module with no `exec`/`eval`/`compile`/`loads` in it, so a script that merely
+  computes something is never replaced by its own return value.
+- **A simulated call can no longer kill the run.** `bytearray.append(300)` or
+  `n.to_bytes(4, 'big')` on a 300-bit number used to raise out of the analyser and
+  end the file; now the branch ends, the file does not.
+- **`int.bit_length()` is whitelisted.** A base-N loader computes its own byte
+  length from the number it built - `n.to_bytes((n.bit_length() + 7) // 8,
+  'big')` - and refusing that one call stopped every such chain one call short of
+  the payload.
+- The fuzz's own generator was wrong in a way worth naming: `make_corpus.cook`
+  applies `layers[0]` first, so `layers[0]` is the *innermost* wrap, and a stack
+  written any other way builds a sample that cannot decode at all. The harness now
+  spells its stacks in decode order and cancels self-inverting pairs
+  (`xor5a → xor5a`, `reverse → reverse`, `rot13 → rot13`), because a stack that
+  cancels is not a hard sample - it is a sample with no obfuscation left in it.
+
+Result: **200/200, floor 196, mean depth 8.0, 29 s**, and the corpus holds at
+184/184. 277 unit tests, including five that pin the loop rules down.
+
 ### The layer before the payload, sold as the payload
 
 A random stack of `b64url → xor33` came back "recovered" and was not: the

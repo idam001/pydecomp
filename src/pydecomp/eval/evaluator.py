@@ -12,7 +12,12 @@ from ..exceptions import (
     EvalFailed, EvalUnsafe, MarshalPayload, _BreakSignal, _ContinueSignal, _EXC_BY_NAME,
     _ReturnSignal,
 )
-from ..limits import EXEC_SINKS
+from ..limits import EXEC_SINKS, MAX_LOOP_ROUNDS
+
+#: statements a single simulated body may run.  A round of a decoding loop costs
+#: one unit, so this has to be at least as large as the loop cap or a long loop
+#: inside a function would be cut off exactly where it matters.
+DEFAULT_BUDGET = MAX_LOOP_ROUNDS + 10000
 
 class Evaluator:
     """Evaluate *pure* expressions only. Anything else raises EvalUnsafe."""
@@ -306,6 +311,24 @@ class Evaluator:
         raise EvalUnsafe(f"unsupported expression: {type(node).__name__}")
 
     def _call(self, node: ast.Call) -> Val:
+        """Dispatch a call, and never let a simulated call crash the analysis.
+
+        Everything below this line runs *whitelisted* pure code, and pure code
+        can still raise on bad input: `bytearray.append(300)`, `to_bytes` on a
+        number that does not fit, `int("zz")`.  Those are the loader's bug and
+        they end this branch only - a whole file must not die because one
+        decoder was called with nonsense.
+        """
+        try:
+            return self._dispatch_call(node)
+        except (EvalUnsafe, EvalFailed, MarshalPayload):
+            raise
+        except RecursionError:
+            raise EvalFailed("call nested too deeply")
+        except Exception as exc:                    # noqa: BLE001 - a miss, not a crash
+            raise EvalFailed(f"call failed: {type(exc).__name__}: {exc}")
+
+    def _dispatch_call(self, node: ast.Call) -> Val:
         func = node.func
 
         # lambda loader:  _ = lambda __: zlib.decompress(base64.b64decode(__))
@@ -621,7 +644,7 @@ class Evaluator:
                 self.env[name] = Val(val.value if isinstance(val, Val) else val,
                                      list(getattr(val, "recipe", [])))
             try:
-                self.run_body(method.body, [20000])
+                self.run_body(method.body, [DEFAULT_BUDGET])
             except _ReturnSignal as signal:
                 return signal.value if isinstance(signal.value, Val) else Val(signal.value, [])
             return Val(None, [])
@@ -695,7 +718,7 @@ class Evaluator:
                 if param.arg not in self.env and default is not None:
                     self.env[param.arg] = self.eval(default)
             try:
-                self.run_body(fndef.body, [20000])
+                self.run_body(fndef.body, [DEFAULT_BUDGET])
             except _ReturnSignal as signal:
                 inner = signal.value
             else:
@@ -703,6 +726,48 @@ class Evaluator:
         finally:
             self.env, self.functions = saved_env, saved_functions
         return Val(inner.value, rec + inner.recipe)
+
+    def run_function(self, fndef, values=(), kwargs=None) -> dict[str, Val]:
+        """Simulate a loader function and hand back everything it computed.
+
+        `_call_function` needs a ``return``.  The loaders that matter most do not
+        have one - they decode into a name and ``exec`` it, or a helper fills a
+        global - so a body with no return used to be a dead end.  This runs the
+        same body and reports the local namespace, which is where the payload of
+        a statement-style loader actually lives.
+        """
+        saved_env, saved_functions = dict(self.env), dict(self.functions)
+        locals_after: dict[str, Val] = {}
+        try:
+            spec = fndef.args
+            positional = list(getattr(spec, "posonlyargs", [])) + list(spec.args)
+            for param, value in zip(positional, values):
+                self.env[param.arg] = Val(value, [])
+            defaults = list(spec.defaults)
+            for param, default in zip(positional[len(positional) - len(defaults):],
+                                      defaults):
+                if param.arg not in self.env:
+                    try:
+                        self.env[param.arg] = self.eval(default)
+                    except (EvalUnsafe, EvalFailed, MarshalPayload):
+                        pass
+            for name, val in (kwargs or {}).items():
+                self.env[name] = val if isinstance(val, Val) else Val(val, [])
+            if spec.vararg:
+                self.env[spec.vararg.arg] = Val(list(values[len(positional):]), [])
+            try:
+                self.run_body(fndef.body, [DEFAULT_BUDGET])
+            except _ReturnSignal as signal:
+                if signal.value is not None:
+                    self.env["__return__"] = signal.value
+        except (EvalUnsafe, EvalFailed, MarshalPayload):
+            pass
+        except RecursionError:
+            pass
+        finally:
+            locals_after = dict(self.env)
+            self.env, self.functions = saved_env, saved_functions
+        return locals_after
 
     # -- statement simulation ---------------------------------------------
     def run_body(self, body, budget=None, strict=False):
@@ -713,7 +778,7 @@ class Evaluator:
         and payloads that are assembled in loops instead of written literally.
         """
         if budget is None:
-            budget = [100000]
+            budget = [DEFAULT_BUDGET]
         for node in body:
             budget[0] -= 1
             if budget[0] < 0:
@@ -808,11 +873,14 @@ class Evaluator:
                 seq = list(seq)
             if not isinstance(seq, (list, tuple, range)):
                 raise EvalUnsafe("loop over a non-constant iterable")
+            if len(seq) > MAX_LOOP_ROUNDS:
+                # same rule as the while loop: never publish a partial iteration
+                raise EvalFailed("iterable too long to finish inside the budget")
             broke = False
-            for item in itertools.islice(seq, 20000):
+            for item in seq:
                 budget[0] -= 1
                 if budget[0] < 0:
-                    return
+                    raise EvalFailed("statement budget exhausted inside a loop")
                 self._store(node.target, Val(item, []))
                 try:
                     self.run_body(node.body, budget)
@@ -829,11 +897,17 @@ class Evaluator:
         if isinstance(node, ast.While):
             test = self.eval(node.test)                 # constant-only conditions
             rounds = 0
-            while test.value and rounds < 1000:
+            while test.value:
                 rounds += 1
+                # a cap that silently stops is worse than no cap: the rest of the
+                # file then decodes a *truncated* value and the analyser writes it
+                # out as if it were the answer.  1125 rounds of a base45 loop is
+                # an ordinary loader; 1000 was not a budget, it was a wrong answer.
+                if rounds > MAX_LOOP_ROUNDS:
+                    raise EvalFailed("loop did not finish within the simulation budget")
                 budget[0] -= 1
                 if budget[0] < 0:
-                    return
+                    raise EvalFailed("statement budget exhausted inside a loop")
                 try:
                     self.run_body(node.body, budget)
                 except _BreakSignal:
@@ -926,7 +1000,15 @@ class Evaluator:
                 return Val([list(pair) for pair in out], rec + [attr])
             return Val(out, rec + [attr])
         if isinstance(v, int) and attr in METHOD_NAMES_EXTRA:
-            return Val(METHOD_NAMES_EXTRA[attr](v, *vals, **kwargs), rec + [attr])
+            try:
+                out = METHOD_NAMES_EXTRA[attr](v, *vals, **kwargs)
+            except (EvalUnsafe, MarshalPayload):
+                raise
+            except Exception as exc:                 # noqa: BLE001 - a bad length is a miss, not a crash
+                # `n.to_bytes(4, "big")` on a 300-bit number raises OverflowError:
+                # that is the loader's bug, and it must end this branch only
+                raise EvalFailed(f".{attr}(): {type(exc).__name__}: {exc}")
+            return Val(out, rec + [attr])
         if isinstance(v, (str, bytes)) and attr in ("translate", "format", "split",
                                                     "rsplit", "zfill", "ljust",
                                                     "rjust", "center", "partition",

@@ -26,6 +26,12 @@ MAX_SOURCE = 64 * 1024 * 1024
 #: how many distinct layer chains are explored per input
 MAX_CHAINS = 12
 
+#: how many rounds a simulated `for`/`while` loop may take before the branch is
+#: abandoned.  A base58 loader walks one round per character, so a 4 KB blob is an
+#: ordinary 5000-round loop; the point of the number is to bound the work, not to
+#: cut loaders off mid-decode.
+MAX_LOOP_ROUNDS = 200000
+
 EXEC_SINKS = {"exec", "eval", "compile", "builtins.exec", "builtins.eval",
               "builtins.compile", "__builtins__.exec"}
 

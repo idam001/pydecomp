@@ -50,7 +50,59 @@ MC = _corpus_module()
 # a random stack has no idea where that is, and pretending otherwise builds
 # samples that would not run at all.  It stays in the corpus, out of the fuzz.
 LAYERS = ["b64", "b64url", "base32", "base85", "a85", "hex", "zlib", "lzma",
-          "gzip", "bz2", "reverse", "rot13", "xor5a", "xor33"]
+          "gzip", "bz2", "reverse", "rot13", "xor5a", "xor33",
+          "base58", "base62", "base45", "z85"]
+
+#: codecs with an alphabet of their own.  The named families spell their loaders
+#: out by hand; in a random stack the spelling has to be generated, and it has to
+#: be the *same shape* a real loader uses - a counting loop, not a call to a
+#: decoder we invented - or the sample would be testing our vocabulary, not the
+#: analyser's reading.
+ALPHABETS = {"base58": MC.B58, "base62": MC.B62, "base45": MC.B45, "z85": MC.Z85}
+
+
+def _alphabet_stage(name: str) -> list[str]:
+    alphabet = ALPHABETS[name]
+    if name == "z85":
+        return [f"_A = {alphabet!r}", "_o = bytearray()",
+                "for _i in range(0, len(_p), 5):",
+                "    _v = 0",
+                "    for _c in _p[_i:_i + 5]:",
+                "        _v = _v * 85 + _A.index(chr(_c))",
+                "    _o.extend(_v.to_bytes(4, 'big'))",
+                "_p = bytes(_o).rstrip(b'\\x00')"]
+    if name == "base45":
+        return [f"_A = {alphabet!r}", "_o = bytearray()", "_i = 0",
+                "while _i + 2 < len(_p):",
+                "    _v = (_A.index(chr(_p[_i]))",
+                "          + _A.index(chr(_p[_i + 1])) * 45",
+                "          + _A.index(chr(_p[_i + 2])) * 2025)",
+                "    _o.extend(_v.to_bytes(2, 'big'))",
+                "    _i += 3",
+                "if _i < len(_p):",
+                "    _o.append(_A.index(chr(_p[_i]))"
+                " + _A.index(chr(_p[_i + 1])) * 45)",
+                "_p = bytes(_o)"]
+    return [f"_A = {alphabet!r}", "_n = 0",
+            "for _c in _p.decode().strip():",
+            "    _n = _n * len(_A) + _A.index(_c)",
+            "_p = _n.to_bytes(max(1, (_n.bit_length() + 7) // 8), 'big')"]
+
+
+def loader_for(cooked: bytes, layers: tuple[str, ...]) -> str:
+    """A loader that undoes ``layers``, one statement per layer.
+
+    `make_corpus.loader_for` writes one nested expression, which cannot express a
+    loop.  Here every layer is its own statement, which can.
+    """
+    body = ["import base64, codecs, zlib, lzma, gzip, bz2", f"_p = {cooked!r}"]
+    for name in reversed(layers):
+        if name in ALPHABETS:
+            body += _alphabet_stage(name)
+        else:
+            body.append(f"_p = {MC.OPS[name][2].format(x='_p')}")
+    body.append("exec(_p)")
+    return "\n".join(body) + "\n"
 
 
 #: shapes the *loader* can take, independent of the codec stack: a stack tests
@@ -111,13 +163,23 @@ def build(seed: int, run: int, depth_max: int = 12) -> tuple[str, bytes, str, st
                                           "xor33", "reverse"):
             continue
         safe.append(name)
-    layers = tuple(safe) or ("b64",)
+    # a layer applied twice in a row can cancel itself out - xor with the same
+    # key, reverse, rot13 - and a stack that cancels is not a hard sample, it is
+    # a sample with no obfuscation left in it.  Collapse those pairs.
+    collapsed: list[str] = []
+    for name in safe:
+        if collapsed and collapsed[-1] == name and name in (
+                "reverse", "rot13", "xor5a", "xor33"):
+            collapsed.pop()
+            continue
+        collapsed.append(name)
+    layers = tuple(collapsed) or ("b64",)
     try:
         cooked, _steps = MC.cook(payload, layers)
     except Exception:                                # noqa: BLE001 - fall back to base64
         layers = ("b64",)
         cooked, _steps = MC.cook(payload, layers)
-    loader = MC.loader_for(cooked, layers, "exec")
+    loader = loader_for(cooked, layers)
     shape = WRAPPERS[rng.randrange(len(WRAPPERS))]
     loader = wrap(loader, shape)
     return loader, payload, " → ".join(layers), shape

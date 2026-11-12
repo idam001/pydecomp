@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-30 gates, plus 264 unit tests:
+30 gates, plus 277 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -311,7 +311,7 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `examples` — the six worked examples | 6/6 recovered |
 | `corpus` — 46 families × 4 payloads | 184/184 recovered |
 | `learn` — trained decoder ranking | 37.5% → 75.0% top-1, 7.81 → 1.62 decodes |
-| `stress` — 200 random stacks, up to 24 layers, 6 loader shapes | 200/200 recovered (floor 196) |
+| `stress` — 200 random stacks, up to 24 layers, 18 codecs, 6 loader shapes | 200/200 recovered (floor 196) |
 
 Real samples (byte-for-byte stable across releases):
 
@@ -350,11 +350,14 @@ checkout:
 The per-family table is [docs/corpus-results.md](docs/corpus-results.md). Beyond the
 named families, `tools/stress_corpus.py` builds **random stacks nobody wrote
 down** from the same layer table and grades them the same way. The gate runs
-**200 stacks over five seeds, up to twenty-four layers deep**, and each loader is
-also dressed in one of six shapes an obfuscator actually ships — bare,
-inside a function, behind a decoy `exec`, and with the loader *itself* stored
-as string chunks or as reversed lines joined at runtime. Latest run: **200/200
-recovered**, floor **196**. A case that used to be recovered and stops being
+**200 stacks over five seeds, up to twenty-four layers deep**, drawn from all
+eighteen reversible codecs the families use — including base58, base62, base45
+and z85, whose loaders are counting loops rather than one-line calls, so the
+harness generates the same loop a real loader spells out. Each loader is also
+dressed in one of six shapes an obfuscator actually ships: bare, inside a
+`def`, behind a decoy `exec`, and with the loader *itself* stored as string
+chunks or as reversed lines joined at runtime. Latest run: **200/200
+recovered**, floor **196**, mean depth 8.0. A case that used to be recovered and stops being
 recovered fails the `corpus` gate, so the number can only go up with the code,
 never down with the prose.
 

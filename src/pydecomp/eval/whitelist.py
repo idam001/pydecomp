@@ -245,4 +245,12 @@ BUILTINS = {
     "frozenset": lambda seq=(): list(dict.fromkeys(seq)),
 }
 
-METHOD_NAMES_EXTRA = {"to_bytes": _int_to_bytes, "from_bytes": _from_bytes}
+METHOD_NAMES_EXTRA = {
+    "to_bytes": _int_to_bytes,
+    "from_bytes": _from_bytes,
+    # a base-N loader computes its own byte length from the number it built:
+    # `n.to_bytes((n.bit_length() + 7) // 8, "big")` is the standard spelling, and
+    # refusing `.bit_length()` stopped the chain one call short of the payload
+    "bit_length": lambda v: int(v).bit_length(),
+    "bit_count": lambda v: int(v).bit_count(),
+}

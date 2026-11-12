@@ -155,6 +155,7 @@ def find_payloads(source: str) -> list[Payload]:
         except (EvalUnsafe, EvalFailed):
             continue
 
+    found.extend(_namespace_payloads(tree, ev))
     found.extend(_marshal_payloads(tree, ev))
     found.extend(_alphabet_payloads(tree))
     found.extend(_xor_comprehension_payloads(tree, ev))
@@ -214,6 +215,81 @@ def _is_program(text: str) -> bool:
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return False
     return any(isinstance(node, _PROGRAM_NODES) for node in ast.walk(tree))
+
+
+def _has_dynamic_sink(tree: ast.AST) -> bool:
+    """Does this module execute code it built at runtime?"""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = None
+        if isinstance(func, ast.Attribute):
+            name = func.attr
+        elif isinstance(func, ast.Name):
+            name = func.id
+        if name and (name in ("exec", "eval", "compile", "loads", "load_module")
+                     or f"{name}" in {sink.rsplit(".", 1)[-1] for sink in EXEC_SINKS}):
+            return True
+    return False
+
+
+def _namespace_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
+    """The payload of a *statement* loader: whatever the decoding left in a name.
+
+    A one-line loader decodes inside the ``exec(...)`` argument, so reading the
+    argument is enough.  A loader that decodes into a variable and then calls
+    ``exec(_p)`` (- which is what most packers emit, and what a `def` wrapper
+    makes unavoidable -) has no decoding expression to read: the work happened in
+    the statements before.  After the module body is simulated, those statements
+    have values, and so does the local namespace of every function the module
+    calls.  Both are candidates.
+    """
+    # A program that merely *computes* something is not a loader.  Only a module
+    # that hands bytes to exec/eval/compile is one, and only then is a decoded
+    # local a payload - otherwise every script with a function in it would have
+    # its innards offered up as "the payload" and the file would be replaced by
+    # its own return value.
+    if not _has_dynamic_sink(tree):
+        return []
+
+    candidates: dict[bytes, Payload] = {}
+
+    def offer(val) -> None:
+        value = getattr(val, "value", None)
+        if not isinstance(value, (bytes, bytearray, str)) or not value:
+            return
+        data = to_bytes(value)
+        if len(data) < 8 or data in candidates:
+            return
+        # a candidate that is neither source nor a layer we can name is noise
+        if not (val.recipe or _is_program(data.decode("utf-8", "surrogateescape"))):
+            return
+        candidates[data] = Payload(list(val.recipe), data, "python")
+
+    for val in list(ev.env.values()):
+        offer(val)
+
+    # functions the module body calls: their locals hold what they decoded
+    interesting = {name for name, fndef in ev.functions.items()
+                   if isinstance(fndef, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        if node.func.id not in interesting:
+            continue
+        fndef = ev.functions[node.func.id]
+        values = []
+        for arg in node.args:
+            try:
+                values.append(ev.eval(arg).value)
+            except (EvalUnsafe, EvalFailed, MarshalPayload):
+                break
+        else:
+            for val in ev.run_function(fndef, values).values():
+                offer(val)
+
+    return list(candidates.values())
 
 
 def _literal_blobs(tree: ast.AST, floor: int = 24) -> list[tuple[bytes, ast.AST]]:
