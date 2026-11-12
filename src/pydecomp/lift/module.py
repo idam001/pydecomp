@@ -570,7 +570,8 @@ def lift_module(code: CodeObj, version: tuple) -> str:
     """Whole-module reconstruction: rebuilt source where proven, lifter elsewhere."""
     try:
         text = _lift_module6(code, version)
-    except Exception:                                # noqa: BLE001 - never fail the run
+    except Exception as exc:                         # noqa: BLE001 - never fail the run
+        LIFT_QUALITY["error"] = f"{type(exc).__name__}: {exc}"
         text = None
     if text is None or compile_problem(text) is not None:
         fallback = _lift_module5(code, version)
@@ -667,9 +668,15 @@ def _lift_module6(code: CodeObj, version: tuple) -> str | None:
     # One line, always the same: the recovered file says who produced it and
     # nothing else.  The round-trip score and the degraded-mode note are still
     # reported — the console panel and the `--reports` files carry them.
-    from ..terminal.banner import stamp
-    lines = [stamp(), ""]
-    header = lines[0]
+    try:
+        from ..terminal.banner import stamp
+        header = stamp()
+    except Exception:                                # noqa: BLE001
+        # branding is never worth losing a rebuild over: on a machine where the
+        # banner cannot describe itself, fall back to the plain signature
+        from ..terminal.identity import SIGNATURE
+        header = SIGNATURE
+    lines = [header, ""]
     lines = lines[1:]
     lines.extend(body_text.rstrip().split("\n"))
     text = "\n".join(ensure_parseable(clamp_indent(sanitize(lines)))) + "\n"

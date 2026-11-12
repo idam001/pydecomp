@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 !tests/fixtures/native/*.so
+!tests/fixtures/**/*.pyc
 
 # build / packaging
 build/

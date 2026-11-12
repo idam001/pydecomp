@@ -1,12 +1,13 @@
 """Probe: control-flow flattening (Jawbreaker style) and inline-__import__ shapes."""
 import base64
 import os
+import pathlib
 import subprocess
 import sys
 import tempfile
 import zlib
 
-TOOL = "/home/user/pydeob/dist/pydecomp.py"
+TOOL = str(pathlib.Path(__file__).resolve().parents[2] / "dist" / "pydecomp.py")
 PROGRAM = (
     'import os\n'
     'LIMIT = 3\n'

