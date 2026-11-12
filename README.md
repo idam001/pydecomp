@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-29 gates, plus 253 unit tests:
+30 gates, plus 255 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -311,6 +311,7 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `examples` — the six worked examples | 6/6 recovered |
 | `corpus` — 46 families × 4 payloads | 184/184 recovered |
 | `learn` — trained decoder ranking | 37.5% → 75.0% top-1, 7.81 → 1.62 decodes |
+| `stress` — 100 random stacks, 1–12 layers | 85/100 recovered (floor 80) |
 
 Real samples (byte-for-byte stable across releases):
 
@@ -346,7 +347,11 @@ checkout:
 |---|---|---|---|---|
 | all families | 184 | **184** | 98.2% | 1.42 s |
 
-The per-family table is [docs/corpus-results.md](docs/corpus-results.md).  A case
+The per-family table is [docs/corpus-results.md](docs/corpus-results.md). Beyond the
+named families, `tools/stress_corpus.py` builds **100 random stacks** from the
+same layer table (1–12 layers, mean 5.1) and grades them the same way: **85/100
+recovered**, with the floor wired into the `stress` gate so the number can only
+climb.  A case
 that used to be recovered and stops being recovered fails the `corpus` gate, so
 the number can only go up with the code, never down with the prose.
 

@@ -59,10 +59,11 @@ SUITE = {
     "examples": (EXAMPLES, {}, False),
     "corpus": (ROOT / "tools" / "eval_corpus.py", {}, False),
     "learn": (ROOT / "tools" / "train_learn.py", {}, False),
+    "stress": (ROOT / "tools" / "stress_corpus.py", {}, False),
 }
 
 GOOD = re.compile(r"(all good|passed|instruction-identical|probe shapes recovered|"
-                  r"semantic score|examples recovered|ok corpus|ok learned ranking)", re.I)
+                  r"semantic score|examples recovered|ok corpus|ok learned ranking|ok stress)", re.I)
 
 
 def run(name: str, verbose: bool = False) -> dict:
@@ -77,6 +78,8 @@ def run(name: str, verbose: bool = False) -> dict:
     # the corpus and the learned ranking are statements about committed files,
     # so the gate is the checker, not the builder
     if path.name == "train_learn.py":
+        command.append("--check")
+    if path.name == "stress_corpus.py":
         command.append("--check")
     if path.name == "eval_corpus.py":
         command.append("--quiet")
