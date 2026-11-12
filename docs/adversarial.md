@@ -121,7 +121,8 @@ packaging.  On the light build (0.35 s, one code object, 168,806 B of bytecode):
 |---|---|
 | reaches for | `anti-analysis` (`_getframe`, `settrace`, `inspect`), `dynamic-code` (`marshal`, `compile`, `eval`, `setattr`), `decode-layers` (`fromhex`), `filesystem` (`open`, `read`), `subprocess` (`system`) |
 | name table | 400 identifiers, deduplicated, filler removed |
-| sealed blobs | 1,876 |
+| sealed blobs | 1,876 byte constants; the 4 that are ≥ 8,192 B are classified, not just counted |
+| blob classification | 88,870 B e=4.59 p=4 · 89,012 B e=2.67 p=8 · 134,532 B e=5.88 p=9 · 105,745 B e=5.83 p=7 — all four repeat at a fixed stride |
 | CJK filler strings | 284, counted and dropped |
 
 Capability claims match **whole identifier words only**.  Substring matching
@@ -129,25 +130,81 @@ turned `_walk_tb_with_full_positions` into an `os.walk` claim during
 development, which is exactly the kind of false precision this tool must not
 ship.
 
-Single-byte XOR over the payload's byte constants is implemented but **off by
-default**.  Every filter we tried (printable ratio, word shape, vowel structure,
-alphabet-run rejection) still let 60 noise literals through on this sample, and
-none of the 11 `__nxor2__(b'…', N)` call sites decode to text under any
-single-byte key — the second argument is not the whole key schedule.  Shipping
-it would be a false-positive factory, so the report says it was not applied.
+Each sealed blob is measured, not guessed: entropy, dominant byte share, and
+self-coincidence at strides 1–64.  The verdict never says a blob was opened —
+it says what the numbers show.  Random data measures 1.0× the coincidence of
+uniform noise; these four measure 41× to 178×, so the file says *"data repeats
+at a stride of 4 / 8 / 9 / 7 bytes — a repeating-key XOR or a fixed-size record
+table; not opened"*.
+
+### The `__nxor2__` sites do not hide strings
+
+The obfuscator's emitter explains them, and it settles a wrong hypothesis of
+ours.  In `idam_obf_v4_fixed.py` the `__nb__` helper wraps **bytecode tables**:
+
+```python
+def __nb__(bb):
+    __nk__ = secrets.randbelow(255) + 1
+    return f"__nxor2__({bytes(b ^ __nk__ for b in bb)!r}, {__nk__})"
+```
+
+It is applied to `co_code`, `co_linetable` and `co_exceptiontable`, never to
+string constants (those go through the string pool).  Decoding all 11 sites in
+the lifted loader confirms it: seven decodes are under 50 bytes, two are
+134,532 B and 105,745 B of table data, and the only compressed one is a 40-byte
+zlib stream that inflates to 32 bytes of `d5,fc5hf;64dy6c16699c6}ej5[f=5Yf`.
+There is no readable loader string behind the XOR, so "fold the decoder to
+expose the loader's strings" was never going to work.
+
+### The four "sealed" constants are the loader's own code tables
+
+The engine reports four constants that no decoder opens, and calls the payload
+sealed.  The verdict (this is the loader, not the script) is right; the reason
+needed checking, and here is what the check found.  Two of the four match a
+`__nxor2__` site in the lifted loader **byte for byte after a single XOR**:
+
+| payload constant | loader site data | XOR delta |
+|---|---|---|
+| 134,532 B | 134,532 B | exactly `0xC1` (the site's own key) |
+| 105,745 B | 105,745 B | exactly `0x86` (the site's own key) |
+
+One distinct delta across half a megabyte is not a coincidence: those constants
+are the loader's own `co_code`/`co_linetable`/`co_exceptiontable`, emitted XOR'd
+by the packer's `__nb__` helper and XOR'd again by the sealer.  So the light
+build does **not** hide the target script behind these blobs - the script's code
+objects are not in this layer at all.  That is why `_loader` and *NOT VERIFIED*
+are the honest labels here, and why the next step below is about the emitted
+code objects rather than about breaking this cipher.
+
+### What was tried on the big blobs, and failed
+
+Recorded so it is not retried:
+
+| attempt | result |
+|---|---|
+| single-byte XOR + `marshal` under all 256 keys, exact re-serialisation required | no key round-trips |
+| single-byte XOR + zlib/bz2/lzma at every offset 0–63 | no stream opens |
+| base85/base64 after single-byte XOR | nothing decodes |
+| key recovery assuming the dominant plaintext byte is space | best printable ratio 0.90, and the text is nonsense |
+
+Single-byte XOR over the payload's small byte constants is implemented but **off
+by default**: every filter we tried (printable ratio, word shape, vowel
+structure, alphabet-run rejection) still let 60 noise literals through on this
+sample.  Shipping it would be a false-positive factory, so the report says it
+was not applied.
 
 ## What has to be built next
 
 Ordered by what this campaign proved is missing.
 
-1. **Recover the packer's real key schedule (P0).**  The decoder is in plain
-   sight: `__nxor2__ = lambda data, key: bytes(b ^ key for b in data)`, and the
-   integer arguments come from `___IdamDegule__('<name>', value, k1, k2)` — a
-   keyed table in the obfuscator itself (source lines 651–800).  Brute-forcing a
-   single byte at the 11 call sites produces no readable text, so the next step
-   is to read that table and replay it, not to widen the search.  Once the
-   decryptor is known, folding the calls into literals is the first real crack
-   in this family.  The expression evaluator already interprets function bodies; it
+1. **Rebuild the code objects the loader constructs (P0, full build first).**  The emitter shows
+   the shape: `__emmanuelencoder_runner_(argcount, nlocals, stacksize, flags,
+   code, consts, names, …, linetable, exceptiontable, …)` with the XOR'd
+   bytecode as an argument.  A static pass that evaluates those arguments,
+   undoes the XOR and hands the result to `types.CodeType` would rebuild each
+   code object **without executing anything**, and `lift_module` would then
+   produce the source.  This is the one path that leads to real recovery on this
+   family, and it needs no cipher break: the key is the literal second argument.  The expression evaluator already interprets function bodies; it
    needs to be pointed at call sites inside the lifted module.
 2. **Follow the loader's own decryptor into the sealed blobs (P0).**  Once (1)
    works, the keys and the order of operations (`base85 → bz2 → zlib →

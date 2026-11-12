@@ -128,9 +128,13 @@ def main():
         ok("reveal" in intel_text, "the payload's own names reached the intel file")
         ok(len(intel_text) < 40_000 and "SEALED = b" not in intel_text,
            "the intel file carries no ciphertext")
+    if intel_files:
+        ok("## sealed blobs" in intel_text,
+           "the intel file classifies the sealed blob instead of just counting it")
     if reports:
         data = json.load(open(os.path.join(out2, reports[0]), encoding="utf-8"))
         ok(bool(data.get("intel")), "the report records the intel summary")
+        ok(bool(data.get("sealed_kinds")), "the report records the sealed blob kinds")
 
     # 3. nothing to unpack is not a recovery
     plain = os.path.join(work, "plain.py")
@@ -149,7 +153,7 @@ def main():
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1
-    print(f"\n{21} checks passed — all good")
+    print(f"\n{23} checks passed — all good")
     return 0
 
 

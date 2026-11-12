@@ -12,6 +12,10 @@ from __future__ import annotations
 
 import re
 
+from .sealed import classify as classify_sealed
+from .sealed import render as render_sealed
+from .sealed import summary as sealed_summary
+
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,40}$")
 HEXISH = re.compile(r"^[0-9a-fA-F]{8,}$")
 FILENAME = re.compile(r"^[\w./\\-]+\.(?:py|pyc|pyw|so|pyd|txt|json|csv)$", re.I)
@@ -49,6 +53,7 @@ CAPABILITY = {
 MIN_STRING = 4
 MAX_IDENTIFIERS = 400
 MAX_STRINGS = 60
+SEALED_FLOOR = 8192          # same floor the engine uses to call a payload sealed
 
 
 def _printable(text: str) -> bool:
@@ -134,6 +139,7 @@ def harvest(code, xor: bool = False) -> dict:
     junk = 0
     blobs = 0
     units = 0
+    sealed: list[dict] = []
     names_seen: set[str] = set()
 
     for _depth, unit in _walk(code):
@@ -162,6 +168,8 @@ def harvest(code, xor: bool = False) -> dict:
                     junk += 1
             elif isinstance(const, bytes):
                 blobs += 1
+                if len(const) >= SEALED_FLOOR:
+                    sealed.append(classify_sealed(bytes(const)))
                 if xor:
                     text = const.decode("utf-8", "replace")
                     inner = b""
@@ -182,6 +190,7 @@ def harvest(code, xor: bool = False) -> dict:
         "strings": sorted(strings, key=lambda s: (-len(s), s))[:MAX_STRINGS],
         "decoded": sorted(decoded, key=lambda s: (-len(s), s))[:MAX_STRINGS],
         "capabilities": _capabilities(names_seen),
+        "sealed": sealed,
         "blob_count": blobs,
         "junk_strings": junk,
         "units": units,
@@ -286,8 +295,8 @@ def summary(intel: dict) -> str:
                      + (f" +{len(caps) - 2}" if len(caps) > 2 else ""))
     if intel.get("filenames"):
         parts.append(f"{len(intel['filenames'])} filename(s)")
-    if intel.get("blob_count"):
-        parts.append(f"{intel['blob_count']} sealed blob(s)")
+    if intel.get("sealed"):
+        parts.append(sealed_summary(intel["sealed"]).split(" — ")[0])
     return " · ".join(parts)
 
 
@@ -310,6 +319,7 @@ def render(name: str, intel: dict) -> str:
         for row in _columns(intel["identifiers"]):
             lines.append("  " + row)
         lines.append("")
+    lines.extend(render_sealed(intel.get("sealed") or []))
     if intel.get("filenames"):
         lines.append("## source filenames")
         for entry in intel["filenames"]:

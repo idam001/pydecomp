@@ -29,8 +29,21 @@ sealed blob count and the CJK filler it discarded.  The DONE panel gained an
   under any single-byte key.
 - `harvest()` accepts both pydecomp's code wrapper and a real code object, so it
   can never silently return nothing for a payload it was handed.
-- 11 new unit tests (`tests/unit/test_payload_intel.py`) and 4 new adversarial
-  checks (21 total).
+- **Sealed blobs are classified, not just counted.**  New
+  `triage/sealed.py` measures entropy, dominant byte share and self-coincidence
+  at strides 1–64, then says what that means without ever claiming an open.  On
+  the reference packer's four blobs: 41×–178× the coincidence of uniform noise,
+  repeating at strides 4, 8, 9 and 7 bytes.  The DONE panel now reads
+  `sealed 4 blob(s) 418,159 bytes 2× cyclical, 2× opaque` and `report.json`
+  gained `sealed_kinds`.
+- **Corrected hypothesis, on the record.**  The `__nxor2__` call sites do not
+  hide loader strings: the obfuscator's own emitter applies that helper to
+  `co_code`, `co_linetable` and `co_exceptiontable`.  `docs/adversarial.md`
+  records the measurement, the four failed opening attempts, and the P0 that
+  replaces them (rebuild the code objects via `types.CodeType`, no cipher break
+  needed).
+- 20 new unit tests (`test_payload_intel.py`, `test_sealed.py`) and 6 new
+  adversarial checks (23 total).
 
 ## [1.0.0] — 2026-11-01 — “the Almighty”
 

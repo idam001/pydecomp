@@ -136,6 +136,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         intel = _payload_intel(artifact)
         if intel:
             report["intel"] = summary_intel(intel)
+            if intel.get("sealed"):
+                report["sealed"] = [entry["kind"] for entry in intel["sealed"]]
             emit(paint("intel        " + summary_intel(intel)
                        + "  (structure the packer left behind)", CYAN))
     if fidelity is not None:
@@ -258,8 +260,12 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         ("output", f"{os.path.basename(path)}   {nbytes:,} bytes", WHITE),
     ]
     if artifact.stalled:
-        rows.append(("payload", f"sealed   {artifact.encrypted_blobs} blob(s)   "
-                                f"{artifact.encrypted_bytes:,} bytes", RED))
+        sealed_line = (f"sealed   {artifact.encrypted_blobs} blob(s)   "
+                       f"{artifact.encrypted_bytes:,} bytes")
+        if intel and intel.get("sealed"):
+            from ..triage.sealed import summary as sealed_summary
+            sealed_line += "   " + sealed_summary(intel["sealed"]).split(" — ")[-1]
+        rows.append(("payload", sealed_line, RED))
     if intel:
         rows.append(("intel", summary_intel(intel), CYAN))
     if report["iocs"]:

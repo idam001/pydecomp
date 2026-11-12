@@ -22,7 +22,7 @@ import sys
 
 FILENAME = "original_script.py"
 CJK = "\\u4e00\\u4e8c\\u4e09\\u56db\\u4e94\\u516d"
-SEALED = b"\\x00\\x01" * 4096
+SEALED = {sealed}
 
 
 def parse_rows(table, strict):
@@ -42,8 +42,14 @@ class Counter:
 '''
 
 
+# A packed payload carries its ciphertext as one literal constant, so the
+# fixture does too: ``b"\x00\x01" * 4096`` at runtime is 2 bytes in the code
+# object, which is not what the harvester is asked to classify.
+SEALED_LITERAL = b"\x00\x01" * 4096
+
+
 def _payload():
-    return compile(SOURCE, "<sealed-module>", "exec")
+    return compile(SOURCE.format(sealed=repr(SEALED_LITERAL)), "<sealed-module>", "exec")
 
 
 @pytest.fixture(scope="module")
@@ -95,6 +101,20 @@ def test_xor_space_can_be_opened_explicitly():
     opened = harvest(_payload(), xor=True)
     assert opened["xor_searched"] is True
     assert isinstance(opened["decoded"], list)
+
+
+def test_sealed_blobs_are_classified(intel):
+    sealed = intel["sealed"]
+    assert len(sealed) == 1                     # the fixture's 8,192-byte constant
+    assert sealed[0]["size"] == 8192
+    assert sealed[0]["kind"] in {"structured", "cyclical", "opaque", "high-entropy"}
+    assert "4 blob(s)" not in summary(intel)    # the summary uses the sealed count
+
+
+def test_render_includes_the_sealed_section(intel):
+    text = render("sealed.py", intel)
+    assert "## sealed blobs" in text
+    assert "entropy" in text
 
 
 def test_summary_is_one_line(intel):
