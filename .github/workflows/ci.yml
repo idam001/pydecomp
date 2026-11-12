@@ -30,7 +30,7 @@ jobs:
       - name: install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest
+          python -m pip install pytest pyyaml
       - name: unit tests
         run: PYTHONPATH=src python -m pytest tests/unit -q
       - name: audit (nothing executes a sample)

@@ -49,6 +49,7 @@ cython = ["cython>=3.0"]
 backends = ["depyo>=0.3"]
 dev = [
   "pytest>=8.0",
+  "pyyaml>=6.0",
   "ruff>=0.6",
   "mypy>=1.11",
   "mkdocs>=1.6",
