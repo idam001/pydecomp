@@ -246,6 +246,25 @@ class _FakeSys:
     byteorder = "little"
     hexversion = 0x030E00F0
 
+    def __init__(self, version: str | None = None) -> None:
+        """Report the version the *sample* gates on, when it tells us one.
+
+        Every packer writes its gate as a string literal (``== '3.13'``); that
+        literal is the only honest source for the target version, so the caller
+        picks the candidates and this object simply answers for them.
+        """
+        if not version:
+            return
+        major, _, rest = version.partition(".")
+        minor = "".join(ch for ch in rest if ch.isdigit()) or "0"
+        try:
+            numbers = (int(major), int(minor), 0)
+        except ValueError:
+            return
+        self.version = f"{numbers[0]}.{numbers[1]}.0 (main, Oct  7 2025, 00:00:00) [GCC 13.2.0]"
+        self.version_info = (numbers[0], numbers[1], 0, "final", 0)
+        self.hexversion = (numbers[0] << 24) | (numbers[1] << 16) | 0xF0
+
     def getrecursionlimit(self):
         return 1000
 

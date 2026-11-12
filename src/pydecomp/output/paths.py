@@ -30,10 +30,17 @@ def phone_dir() -> str | None:
             return cand
     return None
 
-def unique_path(folder: str, stem: str) -> str:
-    path = os.path.join(folder, f"{stem}_deob.py")
+def unique_path(folder: str, stem: str, suffix: str = "deob") -> str:
+    """``<stem>_<suffix>.py``, never overwriting an existing file.
+
+    The suffix says what was produced: ``deob`` for a recovery, ``loader`` when
+    only the packer's loader could be lifted, ``copy`` when nothing was
+    unpacked.  A file that is not the script must not be named as if it were.
+    """
+    label = suffix or "deob"
+    path = os.path.join(folder, f"{stem}_{label}.py")
     n = 2
     while os.path.exists(path):
-        path = os.path.join(folder, f"{stem}_deob_{n}.py")
+        path = os.path.join(folder, f"{stem}_{label}_{n}.py")
         n += 1
     return path

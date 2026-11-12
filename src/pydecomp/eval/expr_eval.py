@@ -80,8 +80,9 @@ class ExprEval:
     payload those calls would have received.
     """
 
-    def __init__(self, libraries=True):
+    def __init__(self, libraries=True, target_version: str | None = None):
         self.libraries = libraries
+        self.target_version = target_version
         self.ns = dict(EXPR_BUILTINS)
         self._globals = _NameSpace(self, "globals")
         self._builtins_view = _NameSpace(self, "builtins")
@@ -526,7 +527,7 @@ class ExprEval:
             return _ImportlibModule(self)
         if name in ("Crypto", "Cryptodome", "cryptography"):
             return _CryptoModule(self, name)
-        return {"sys": _FakeSys(), "base64": base64, "zlib": zlib, "codecs": codecs,
+        return {"sys": _FakeSys(self.target_version), "base64": base64, "zlib": zlib, "codecs": codecs,
                 "binascii": binascii, "lzma": lzma, "bz2": bz2, "hashlib": hashlib,
                 "json": json, "struct": struct, "string": string, "math": math,
                 "itertools": itertools, "collections": collections, "re": re,
@@ -571,21 +572,122 @@ class ExprEval:
             raise _ExprRefuse("not callable")
         return func(*args, **kwargs)
 
+_VERSION_GATE = re.compile(r"version\s*\[\s*0\s*:\s*\d\s*\]")
+_VERSION_LITERAL = re.compile(r"^[23]\.\d{1,2}$")
+
+
+def _version_candidates(tree: ast.AST) -> list[str]:
+    """Versions the sample itself claims to target, most likely first.
+
+    A packer guards its payload with ``if sys.version[:4] == '3.13'``.  Our
+    ``sys`` stub used to answer 3.14 no matter what, so such a sample evaluated
+    its *decoy* branch and the tool reported a two-line "install python 3.13"
+    warning as the recovered program.  The gate literal is evidence; use it.
+    """
+    seen: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        texts = [side for side in [node.left, *node.comparators]
+                 if isinstance(side, ast.Constant) and isinstance(side.value, str)]
+        if not texts:
+            continue
+        guarded = any(isinstance(side, (ast.Subscript, ast.Attribute, ast.Call))
+                      for side in [node.left, *node.comparators])
+        for side in texts:
+            value = side.value.strip()
+            if _VERSION_LITERAL.match(value) and (guarded or len(value) == 4):
+                if value not in seen:
+                    seen.append(value)
+    return seen
+
+
+def _payload_score(kind: str, value) -> float:
+    """How much this looks like the payload rather than a decoy branch."""
+    if kind == "code":
+        return 100.0 + (len(value[1].code) / 1000.0 if hasattr(value[1], "code") else 0.0)
+    if kind == "bytes":
+        return 60.0 + min(30.0, len(value) / 1000.0)
+    if kind == "text":
+        text = value.strip()
+        if not text:
+            return 0.0
+        score = min(40.0, len(text) / 200.0)
+        try:
+            parsed = ast.parse(text)
+        except (SyntaxError, ValueError, MemoryError, RecursionError):
+            return 0.0
+        body = [stmt for stmt in parsed.body if not isinstance(stmt, (ast.Import, ast.ImportFrom))]
+        score += min(30.0, len(body) * 2.0)
+        if len(body) <= 1 and len(text) < 120:      # a one-line warning string
+            score *= 0.1
+        return score
+    return 0.0
+
+
+def _evaluate_source(tree: ast.AST, target_version: str | None):
+    engine = ExprEval(target_version=target_version)
+    try:
+        payload = engine.run_module(tree)
+    except (_ExprRefuse, _ExprCaptured, Exception):   # noqa: BLE001 - best effort
+        return None
+    return payload
+
+
 def resolve_expression_payload(source: str):
     """Try to evaluate a source file's own payload expression.
 
     Returns ``("code", (version, CodeObj))``, ``("text", str)``,
-    ``("bytes", bytes)`` or ``None``.
+    ``("bytes", bytes)`` or ``None``.  When the sample gates its payload on an
+    interpreter version, each version it names is tried and the branch that
+    yields a real payload wins over a decoy.
     """
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError, MemoryError, RecursionError):
         return None
-    engine = ExprEval()
-    try:
-        payload = engine.run_module(tree)
-    except (_ExprRefuse, _ExprCaptured, Exception):   # noqa: BLE001 - best effort
+    attempts: list[str | None] = _version_candidates(tree) or [None]
+    if None not in attempts and len(attempts) < 3:
+        attempts.append(None)                       # also try the stub default
+    best: tuple[float, str, object] | None = None
+    for candidate in attempts[:3]:
+        payload = _evaluate_source(tree, candidate)
+        if payload is None:
+            continue
+        coerced = _coerce_payload(payload)
+        if coerced is not None:
+            kind, value = "code", coerced
+        elif isinstance(payload, CodeObj):
+            kind, value = "code", ((3, 14), payload)
+        elif isinstance(payload, (bytes, bytearray)):
+            kind, value = "bytes", bytes(payload)
+        elif isinstance(payload, str):
+            kind, value = "text", payload
+        elif isinstance(payload, tuple) and len(payload) == 2 \
+                and isinstance(payload[1], CodeObj):
+            kind, value = "code", payload
+        else:
+            continue
+        score = _payload_score(kind, value)
+        if best is None or score > best[0]:
+            best = (score, kind, value)
+    if best is None:
         return None
+    payload = best[2]
+    if best[1] == "code":
+        return "code", payload
+    if best[1] == "bytes":
+        return "bytes", payload
+    return "text", payload
+
+
+def _legacy_resolve_expression_payload(source: str):
+    """Kept for reference: the single-attempt path this replaced."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError, MemoryError, RecursionError):
+        return None
+    payload = _evaluate_source(tree, None)
     if payload is None:
         return None
     coerced = _coerce_payload(payload)

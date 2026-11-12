@@ -78,11 +78,46 @@ def _from_code(mod: CodeObj, version: tuple, trace: list, depth: int,
             return found
 
     text = lift_module(mod, version)
+    stalled, blobs, total = _encrypted_payload(mod)
     if LIFT_QUALITY["proven"]:
         trace.append("no further text layer → rebuilt whole module as source")
-        return Artifact(text, "source", trace, _score(text, "source"))
-    trace.append("no further text layer → lifting bytecode to readable Python")
-    return Artifact(text, "pseudo", trace, _score(text, "pseudo"))
+        found = Artifact(text, "source", trace, _score(text, "source"))
+    else:
+        trace.append("no further text layer → lifting bytecode to readable Python")
+        found = Artifact(text, "pseudo", trace, _score(text, "pseudo"))
+    if stalled:
+        found.stalled = True
+        found.encrypted_blobs = blobs
+        found.encrypted_bytes = total
+        trace.append(f"payload is encrypted: {blobs} blob(s), {total:,} B — "
+                     f"this code is the loader, not the script")
+    return found
+
+
+def _encrypted_payload(mod: CodeObj, floor: int = 8192) -> tuple[bool, int, int]:
+    """Large constants that no decoder opens mean the real payload is sealed.
+
+    Lifting such a module yields the packer's own loader — library code the
+    author bundled — and calling that "the recovered script" is exactly the
+    failure this tool must never make.
+    """
+    blobs: list[bytes] = []
+    for const in getattr(mod, "consts", []):
+        if isinstance(const, (bytes, bytearray)) and len(const) >= floor:
+            blobs.append(bytes(const))
+    if not blobs:
+        return False, 0, 0
+    sealed = 0
+    total = 0
+    for blob in blobs:
+        try:
+            decoded, _chain = deep_decode(blob)
+        except Exception:                                # noqa: BLE001
+            decoded = None
+        if decoded is None:
+            sealed += 1
+            total += len(blob)
+    return sealed > 0, sealed, total
 
 def _follow_source(source: str, trace: list, depth: int, seen: set,
                    max_depth: int) -> Artifact | None:
@@ -126,7 +161,15 @@ def _follow_source(source: str, trace: list, depth: int, seen: set,
     if looks_like_python(source):
         text = normalize(source, "source", False)
         if parses_as_python(text):
-            return Artifact(text, "source", trace, _score(text, "source"))
+            found = Artifact(text, "source", trace, _score(text, "source"))
+            # Nothing was peeled and no payload expression resolved, so this is
+            # the input we were handed, not a recovery of it.  Saying "verified"
+            # here would be the worst kind of lie: a byte-for-byte copy passed
+            # off as the deobfuscated program.
+            found.unchanged = not decoded_any
+            if found.unchanged:
+                trace.append("no layer recognised — the file already reads as source")
+            return found
     return None
 
 def _follow_expression_payload(source: str, trace: list, depth: int, seen: set,

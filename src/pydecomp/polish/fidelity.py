@@ -86,6 +86,8 @@ def verify(unpacked: str, cleaned: str) -> dict:
 
 
 def summary(verdict: dict) -> str:
+    if verdict.get("kept") == "unverified":
+        return "NOT VERIFIED — " + str(verdict.get("reason", "payload sealed"))
     if verdict["kept"] == "cleaned":
         return "output verified: still the recovered program"
     return f"rolled back to the unpacked program — {verdict['reason']}"

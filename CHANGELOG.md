@@ -24,6 +24,27 @@ without running it.
 
 ### Indicators, control flow, a shippable rule, and proof
 
+### Fought a real packer (idam v4) and fixed three fake successes
+- **A version-gate decoy is no longer mistaken for the payload.**  The evaluator
+  emulated `sys.version` as 3.14, so a sample gated on `== '3.13'` evaluated its
+  `else` branch and the tool recovered `print("You need install a python 3.13")`
+  as the script — 97 bytes, reported as verified.  The gate literal inside the
+  sample is now treated as evidence: every version it names is tried and the
+  branch that yields a real payload beats a one-line decoy.
+- **A sealed payload is reported, never dressed up.**  When the payload's
+  constants hold large blobs nothing can open, the run is marked incomplete, the
+  console says *payload still encrypted … lifted the loader, not the script*,
+  fidelity reads **NOT VERIFIED**, and the file is written as `_loader.py` — not
+  as the recovered script.
+- **A byte-for-byte copy is no longer called a recovery.**  If no layer matches
+  and polishing changes nothing, the output is `_copy.py` and says
+  *no layer recognised*; if polishing did change it, it says the source was
+  cleaned in place.
+- New gate `adversarial` (17 checks) builds all three fixtures on the fly: a
+  gated decoy sample, a sealed-payload sample, and a plain file.
+- New page [Tested against a packer](docs/adversarial.md) with the measurements
+  and the ordered plan that follows from them.
+
 ### Fixed on phones
 - **The interface now fits the terminal it is drawn in.** Panels were sized for a
   52-column minimum — wider than a Termux window — so every box wrapped and the
@@ -228,6 +249,27 @@ about the difference: pydecomp can now follow logic the *sample itself* defines,
 without running it.
 
 ### Indicators, control flow, a shippable rule, and proof
+
+### Fought a real packer (idam v4) and fixed three fake successes
+- **A version-gate decoy is no longer mistaken for the payload.**  The evaluator
+  emulated `sys.version` as 3.14, so a sample gated on `== '3.13'` evaluated its
+  `else` branch and the tool recovered `print("You need install a python 3.13")`
+  as the script — 97 bytes, reported as verified.  The gate literal inside the
+  sample is now treated as evidence: every version it names is tried and the
+  branch that yields a real payload beats a one-line decoy.
+- **A sealed payload is reported, never dressed up.**  When the payload's
+  constants hold large blobs nothing can open, the run is marked incomplete, the
+  console says *payload still encrypted … lifted the loader, not the script*,
+  fidelity reads **NOT VERIFIED**, and the file is written as `_loader.py` — not
+  as the recovered script.
+- **A byte-for-byte copy is no longer called a recovery.**  If no layer matches
+  and polishing changes nothing, the output is `_copy.py` and says
+  *no layer recognised*; if polishing did change it, it says the source was
+  cleaned in place.
+- New gate `adversarial` (17 checks) builds all three fixtures on the fly: a
+  gated decoy sample, a sealed-payload sample, and a plain file.
+- New page [Tested against a packer](docs/adversarial.md) with the measurements
+  and the ordered plan that follows from them.
 
 ### Fixed on phones
 - **The interface now fits the terminal it is drawn in.** Panels were sized for a

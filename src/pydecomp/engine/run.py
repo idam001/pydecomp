@@ -78,23 +78,44 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         shown += 1
 
     body = _strip_pydecomp_preamble(artifact.text)
+    original_text = body
     clean_notes: list[str] = []
     if artifact.kind in ("source", "pseudo"):
         body, clean_notes = polish_source(body, clean, fast=fast)
+    # "Nothing unpacked" is only a *copy* if the polishing pass left it alone too;
+    # a plain file that we did clean is a legitimately cleaned file.
+    left_alone = artifact.unchanged and body.strip() == original_text.strip()
     fidelity = None
     if artifact.kind in ("source", "pseudo"):
         from ..polish.fidelity import summary as fidelity_summary, verify as verify_fidelity
         fidelity = verify_fidelity(_strip_pydecomp_preamble(artifact.text), body)
+        if artifact.stalled:
+            fidelity = dict(fidelity, kept="unverified",
+                            reason="payload still encrypted — the output is the loader")
+        elif left_alone:
+            fidelity = dict(fidelity, kept="unverified",
+                            reason="nothing was unpacked — the output is the input")
         if fidelity["kept"] == "unpacked":
             body = fidelity["text"]
             clean_notes = list(clean_notes) + [fidelity["reason"]]
-        emit(paint("fidelity   " + fidelity_summary(fidelity),
-                   GREEN if fidelity["kept"] == "cleaned" else YELLOW))
+        verdict_tint = {"cleaned": GREEN, "unverified": RED}.get(fidelity["kept"], YELLOW)
+        emit(paint("fidelity   " + fidelity_summary(fidelity), verdict_tint))
     if neutralize:
         body, guard_notes = neutralize_source(body)
         clean_notes = list(clean_notes) + guard_notes
 
     report = analyse_recovered(body, trace, raw=raw)
+    if artifact.stalled:
+        report["recovered"] = {
+            "complete": False,
+            "reason": ("the payload is sealed: this is the packer's loader, "
+                       "not the program it would run"),
+            "encrypted_blobs": artifact.encrypted_blobs,
+            "encrypted_bytes": artifact.encrypted_bytes,
+        }
+        emit(paint("payload      still encrypted  " + str(artifact.encrypted_blobs)
+                   + f" blob(s), {artifact.encrypted_bytes:,} B — "
+                   + "lifted the loader, not the script", RED, BOLD))
     if fidelity is not None:
         report["fidelity"] = {key: fidelity[key] for key in ("kept", "reason")} | {
             "before": fidelity["before"], "after": fidelity["after"]}
@@ -129,7 +150,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     head = render_report(report, trace, name, raw_size, digest)
     text = "\n".join(head) + "\n\n" + body
 
-    path = save(text, src_path, out_dir)
+    suffix = "loader" if artifact.stalled else ("copy" if left_alone else "deob")
+    path = save(text, src_path, out_dir, suffix=suffix)
     if coverage is not None:
         from ..triage.coverage import render_markdown as render_cov
         try:
@@ -185,6 +207,12 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
 
     kind_label = {"source": "python source", "pseudo": "lifted from bytecode",
                   "strings": "string dump"}.get(artifact.kind, artifact.kind)
+    if artifact.stalled:
+        kind_label = "loader only — payload encrypted"
+    elif left_alone:
+        kind_label = "copy — nothing unpacked"
+    elif artifact.unchanged:
+        kind_label = "python source, cleaned in place"
     elapsed = time.time() - started
     print()
     rows = [
@@ -194,6 +222,9 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         ("fingerprint", report["fingerprint"], CYAN),
         ("output", f"{os.path.basename(path)}   {nbytes:,} bytes", WHITE),
     ]
+    if artifact.stalled:
+        rows.append(("payload", f"sealed   {artifact.encrypted_blobs} blob(s)   "
+                                f"{artifact.encrypted_bytes:,} bytes", RED))
     if report["iocs"]:
         rows.append(("indicators", report.get("ioc_summary", "none found"), YELLOW))
     if report["risks"]:

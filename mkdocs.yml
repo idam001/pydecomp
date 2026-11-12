@@ -40,6 +40,7 @@ nav:
   - Getting started:
       - Install: install.md
       - Termux (Android): termux.md
+      - Tested against a packer: adversarial.md
       - Quick start: quickstart.md
       - CLI reference: cli.md
   - How it works:
