@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-30 gates, plus 255 unit tests:
+30 gates, plus 264 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -311,7 +311,7 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `examples` — the six worked examples | 6/6 recovered |
 | `corpus` — 46 families × 4 payloads | 184/184 recovered |
 | `learn` — trained decoder ranking | 37.5% → 75.0% top-1, 7.81 → 1.62 decodes |
-| `stress` — 100 random stacks, 1–12 layers | 97/100 recovered (floor 95) |
+| `stress` — 200 random stacks, up to 24 layers, 6 loader shapes | 200/200 recovered (floor 196) |
 
 Real samples (byte-for-byte stable across releases):
 
@@ -348,12 +348,15 @@ checkout:
 | all families | 184 | **184** | 98.2% | 1.42 s |
 
 The per-family table is [docs/corpus-results.md](docs/corpus-results.md). Beyond the
-named families, `tools/stress_corpus.py` builds **100 random stacks** from the
-same layer table (1–12 layers, mean 5.2) and grades them the same way: **97/100
-recovered**, with the floor wired into the `stress` gate at 95 so the number can
-only climb.  A case
-that used to be recovered and stops being recovered fails the `corpus` gate, so
-the number can only go up with the code, never down with the prose.
+named families, `tools/stress_corpus.py` builds **random stacks nobody wrote
+down** from the same layer table and grades them the same way. The gate runs
+**200 stacks over five seeds, up to twenty-four layers deep**, and each loader is
+also dressed in one of six shapes an obfuscator actually ships — bare,
+inside a function, behind a decoy `exec`, and with the loader *itself* stored
+as string chunks or as reversed lines joined at runtime. Latest run: **200/200
+recovered**, floor **196**. A case that used to be recovered and stops being
+recovered fails the `corpus` gate, so the number can only go up with the code,
+never down with the prose.
 
 Five things the corpus forced out of the engine, because a family failed and
 the gate would not let it slide:

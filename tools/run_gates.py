@@ -80,7 +80,10 @@ def run(name: str, verbose: bool = False) -> dict:
     if path.name == "train_learn.py":
         command.append("--check")
     if path.name == "stress_corpus.py":
-        command.append("--check")
+        # five seeds, forty stacks each, stacks up to two dozen layers deep: the
+        # gate is the hard corner of the space, not the friendly middle
+        command += ["--check", "--seeds", "1,2,3,4,5", "--runs", "40",
+                    "--depth-max", "24"]
     if path.name == "eval_corpus.py":
         command.append("--quiet")
     if heavy:

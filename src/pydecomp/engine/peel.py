@@ -34,6 +34,94 @@ class Payload:
     data: bytes
     kind: str          # "python" | "marshal" | "opaque"
 
+class _FoldArithmetic(ast.NodeTransformer):
+    """Replace ``bytes(b ^ K for b in <static>)`` with the bytes it produces.
+
+    An xor layer in the middle of a chain is written as a comprehension, and the
+    expression evaluator will not run a comprehension - so a five-layer stack with
+    one xor in the middle used to end there.  The key is in the sample and the
+    input is static, so the value is not a guess: compute it, put a bytes literal
+    in its place, and let the ordinary pipeline carry on.  Only the exact shape is
+    touched; anything with a filter, a second iterable or a non-constant operand
+    is left alone.
+    """
+
+    OPS = {ast.BitXor: lambda a, b: a ^ b,
+           ast.Add: lambda a, b: (a + b) & 0xFF,
+           ast.Sub: lambda a, b: (a - b) & 0xFF}
+
+    def __init__(self, evaluator) -> None:
+        self.evaluator = evaluator
+        self.folded = 0
+
+    def visit_Call(self, node):                        # noqa: N802
+        node = self.generic_visit(node)
+        if not (isinstance(node.func, ast.Name) and node.func.id == "bytes"):
+            return node
+        if len(node.args) != 1 or node.keywords:
+            return node
+        gen = node.args[0]
+        if not isinstance(gen, (ast.GeneratorExp, ast.ListComp)) \
+                or len(gen.generators) != 1 or gen.generators[0].ifs:
+            return node
+        target = gen.generators[0].target
+        if not isinstance(target, ast.Name):
+            return node
+        element = gen.elt
+        if not isinstance(element, ast.BinOp) or type(element.op) not in self.OPS:
+            return node
+        left, right = element.left, element.right
+        loop = None
+        counter = None
+        for this, other in ((left, right), (right, left)):
+            if isinstance(this, ast.Name) and this.id == target.id:
+                if isinstance(other, ast.Constant) and isinstance(other.value, int):
+                    loop, counter = this, other.value
+        if loop is None or counter is None:
+            return node
+        try:
+            value = self.evaluator.eval(gen.generators[0].iter)
+        except Exception:                              # noqa: BLE001 - not static
+            return node
+        data = value.value
+        if isinstance(data, str):
+            data = data.encode("utf-8", "surrogateescape")
+        if not isinstance(data, (bytes, bytearray)):
+            return node
+        apply = self.OPS[type(element.op)]
+        try:
+            out = bytes(apply(item, counter & 0xFF) for item in data)
+        except (OverflowError, ValueError):
+            return node
+        self.folded += 1
+        return ast.copy_location(ast.Constant(value=out), node)
+
+
+def _folded_source(source: str) -> str | None:
+    """The same program with its arithmetic comprehensions folded, or None."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+    evaluator = Evaluator()
+    try:
+        evaluator.absorb(tree)
+    except Exception:                                  # noqa: BLE001
+        pass
+    folder = _FoldArithmetic(evaluator)
+    try:
+        tree = folder.visit(tree)
+        ast.fix_missing_locations(tree)
+    except Exception:                                  # noqa: BLE001
+        return None
+    if not folder.folded:
+        return None
+    try:
+        return ast.unparse(tree)
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
 def find_payloads(source: str) -> list[Payload]:
     """Statically evaluate every exec/eval/compile() argument. Nothing runs."""
     try:
@@ -70,10 +158,27 @@ def find_payloads(source: str) -> list[Payload]:
     found.extend(_marshal_payloads(tree, ev))
     found.extend(_alphabet_payloads(tree))
     found.extend(_xor_comprehension_payloads(tree, ev))
+    if not found:
+        # a mid-chain arithmetic layer: fold it and read the file again
+        folded = _folded_source(source)
+        if folded is not None and folded != source:
+            try:
+                return find_payloads(folded)
+            except RecursionError:
+                pass
     found.extend(_builtin_uu_payloads(tree))
 
-    # prefer the biggest payload (that is nearly always the real one)
-    found.sort(key=lambda pl: len(pl.data), reverse=True)
+    # prefer a payload that really is source; among those, the biggest, because
+    # a small parseable fragment (a stub) is rarely the program
+    def rank(payload: Payload) -> tuple:
+        try:
+            parses = payload.kind == "python" and _is_program(
+                payload.data.decode("utf-8", "surrogateescape"))
+        except (UnicodeDecodeError, RecursionError):
+            parses = False
+        return (parses, len(payload.data))
+
+    found.sort(key=rank, reverse=True)
     return found
 
 
@@ -87,6 +192,28 @@ ALPHABETS = {
     ("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
      ".-:+=^!/*?&<>()[]{}@%$#"): "z85",
 }
+
+
+#: node types that mean "this is a program", not "this happens to parse"
+_PROGRAM_NODES = (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.FunctionDef,
+                  ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom,
+                  ast.If, ast.For, ast.AsyncFor, ast.While, ast.Return, ast.Try,
+                  ast.With, ast.AsyncWith, ast.Raise, ast.Call, ast.Assert,
+                  ast.Delete, ast.Global, ast.Nonlocal)
+
+
+def _is_program(text: str) -> bool:
+    """Does this text parse *and* have the shape of a program?
+
+    ``ast.parse`` alone is not enough: a base64 blob is one enormous identifier,
+    which parses perfectly and is not source.  Requiring one statement-bearing
+    node is what lets the peeler tell "the payload" from "the layer before it".
+    """
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    return any(isinstance(node, _PROGRAM_NODES) for node in ast.walk(tree))
 
 
 def _literal_blobs(tree: ast.AST, floor: int = 24) -> list[tuple[bytes, ast.AST]]:
@@ -194,7 +321,10 @@ def _xor_comprehension_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
             text = plain.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        if looks_like_python(text):
+        # `looks_like_python` is a heuristic and base64 text passes it, which made
+        # the peeler pick the layer *before* the last one and call it the program.
+        # Parse it instead: only real source counts.
+        if _is_program(text):
             found.append(Payload([f"xor(key={key:#04x})"], plain, "python"))
         elif plain[:2] in MAGIC_VERSIONS_BYTES:
             found.append(Payload([f"xor(key={key:#04x})"], plain, "marshal"))
@@ -284,7 +414,11 @@ def peel(source: str, max_layers: int = MAX_LAYERS,
                          "file, so this is not obfuscation; no layer peeled")
             break
         raw = best.data
-        is_src = best.kind == "python" and looks_like_python(raw)
+        # "source" must mean *parses*.  `looks_like_python` accepts base64 text,
+        # so a chain whose last layer was still encoded got written out as the
+        # recovered program - the layer before the payload, sold as the payload.
+        is_src = best.kind == "python" and _is_program(
+            raw.decode("utf-8", "surrogateescape"))
         if best.kind == "marshal":
             note = ("payload is a marshalled code object (marshal.loads). It was NOT "
                     "unmarshalled - that is unsafe on hostile input. Strings were carved.")

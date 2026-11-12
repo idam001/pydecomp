@@ -10,6 +10,8 @@ does.  The seed is fixed so the answer is reproducible.
     python3 tools/stress_corpus.py             # 100 stacks
     python3 tools/stress_corpus.py --runs 500
     python3 tools/stress_corpus.py --seed 7 --verbose
+    python3 tools/stress_corpus.py --seeds 1,2,3,4,5 --runs 40   # many seeds
+    python3 tools/stress_corpus.py --deep --runs 200             # up to 24 layers
     python3 tools/stress_corpus.py --check     # gate mode: one line, exit 4 on a miss
 
 Nothing is executed: every stack is built with the same pure transforms the
@@ -51,12 +53,53 @@ LAYERS = ["b64", "b64url", "base32", "base85", "a85", "hex", "zlib", "lzma",
           "gzip", "bz2", "reverse", "rot13", "xor5a", "xor33"]
 
 
-def build(seed: int, run: int) -> tuple[str, bytes, str]:
+#: shapes the *loader* can take, independent of the codec stack: a stack tests
+#: the decoders, a wrapper tests the reader.  Real obfuscators ship both.
+STUB = b"x = 1\n"
+
+
+def _indent(text: str) -> str:
+    return "\n".join("    " + line for line in text.splitlines())
+
+
+def _chunk(text: str, size: int = 40) -> list[str]:
+    return [text[i:i + size] for i in range(0, len(text), size)]
+
+
+def wrap(loader: str, name: str) -> str:
+    """Put the loader inside one of the shapes obfuscators actually ship."""
+    if name == "bare":
+        return loader
+    if name == "function":
+        return "def _go():\n" + _indent(loader) + "\n\n_go()\n"
+    if name == "decoy":
+        import base64
+        stub = base64.b64encode(STUB).decode()
+        return ("import base64\nexec(base64.b64decode(b'%s'))\n" % stub) + loader
+    if name == "chunks":
+        parts = _chunk(loader)
+        body = ", ".join(repr(part) for part in parts)
+        return "parts = [%s]\nexec(''.join(parts))\n" % body
+    if name == "reversed-lines":
+        lines = loader.splitlines()
+        body = ", ".join(repr(line + "\n") for line in reversed(lines))
+        return "lines = [%s]\nexec(''.join(reversed(lines)))\n" % body
+    raise SystemExit(f"unknown wrapper {name!r}")
+
+
+#: depths a stack may have; `--depth-max` trims this ladder, `--deep` lifts it
+DEPTHS = (1, 2, 3, 4, 6, 8, 12, 16, 20, 24)
+
+
+WRAPPERS = ("bare", "bare", "function", "decoy", "chunks", "reversed-lines")
+
+
+def build(seed: int, run: int, depth_max: int = 12) -> tuple[str, bytes, str, str]:
     """One cooked sample, the payload it holds, and the stack that made it."""
     rng = random.Random(seed * 100003 + run)
     payload_name = rng.choice(sorted(MC.PAYLOADS))
     payload = MC.PAYLOADS[payload_name].encode()
-    depth = rng.choice([1, 2, 3, 4, 6, 8, 12])
+    depth = rng.choice([d for d in DEPTHS if d <= depth_max])
     layers = tuple(rng.choice(LAYERS) for _ in range(depth))
     # a text codec (rot13, escapes) needs text: if the stack mixes one in after a
     # binary layer, drop it and carry on - the point is random stacks, not
@@ -75,7 +118,9 @@ def build(seed: int, run: int) -> tuple[str, bytes, str]:
         layers = ("b64",)
         cooked, _steps = MC.cook(payload, layers)
     loader = MC.loader_for(cooked, layers, "exec")
-    return loader, payload, " → ".join(layers)
+    shape = WRAPPERS[rng.randrange(len(WRAPPERS))]
+    loader = wrap(loader, shape)
+    return loader, payload, " → ".join(layers), shape
 
 
 def grade(loader: str, payload: bytes) -> dict:
@@ -83,6 +128,7 @@ def grade(loader: str, payload: bytes) -> dict:
     from pydecomp.engine.run import deobfuscate as run
     import contextlib
     import io
+    import warnings
 
     folder = tempfile.mkdtemp(prefix="stress-")
     sample = os.path.join(folder, "sample.py")
@@ -95,63 +141,89 @@ def grade(loader: str, payload: bytes) -> dict:
     if written and os.path.isfile(written):
         with open(written, encoding="utf-8", errors="surrogateescape") as handle:
             text = handle.read()
-    score = recall(payload.decode(), text)
-    return {"ok": score >= 0.90 and compiles(text), "recall": round(score, 3),
+    with warnings.catch_warnings():
+        # generated samples can carry a stray escape; that is the sample's
+        # business, not the analyser's, and it must not pollute the gate log
+        warnings.simplefilter("ignore", SyntaxWarning)
+        warnings.simplefilter("ignore", DeprecationWarning)
+        score = recall(payload.decode(), text)
+        parsed = compiles(text)
+    # an output that is just the sample handed back is not a decompile, however
+    # many payload tokens the sample happens to quote
+    copied = text.strip() == loader.strip()
+    return {"ok": score >= 0.90 and parsed and not copied,
+            "recall": 0.0 if copied else round(score, 3),
             "tokens": len(tokens(payload.decode()))}
 
 
-#: the share of random stacks that must come back recovered
-FLOOR = 0.95
+#: the share of random stacks that must come back recovered.  Five seeds of forty
+#: stacks, up to twenty-four layers deep, with the loader inside one of six
+#: shapes: this is the corner of the space, so the floor sits near the ceiling.
+FLOOR = 0.98
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="random stacks against the analyser")
     parser.add_argument("--runs", type=int, default=100)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--seeds", default="", help="comma list, overrides --seed")
+    parser.add_argument("--depth-max", type=int, default=12)
+    parser.add_argument("--deep", action="store_true", help="stacks up to 24 layers")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv[1:])
 
+    if args.deep:
+        args.depth_max = max(args.depth_max, 24)
+    seeds = ([int(part) for part in args.seeds.split(",") if part.strip()]
+             or [args.seed])
+    args.seed = seeds[0]
+
     rows = []
-    for run in range(args.runs):
-        loader, payload, stack = build(args.seed, run)
-        try:
-            result = grade(loader, payload)
-        except Exception as exc:                     # noqa: BLE001 - one stack must not stop the run
-            result = {"ok": False, "recall": 0.0, "error": f"{type(exc).__name__}: {exc}"}
-        result["stack"] = stack
-        rows.append(result)
-        if args.verbose and not result["ok"]:
-            print(f"  miss #{run:<4} recall {result['recall']:.2f}  {stack}")
+    for seed in seeds:
+        for run in range(args.runs):
+            loader, payload, stack, shape = build(seed, run, args.depth_max)
+            try:
+                result = grade(loader, payload)
+            except Exception as exc:                # noqa: BLE001 - one stack must not stop the run
+                result = {"ok": False, "recall": 0.0,
+                          "error": f"{type(exc).__name__}: {exc}"}
+            result["stack"] = stack
+            result["shape"] = shape
+            rows.append(result)
+            if args.verbose and not result["ok"]:
+                hint = result.get("error") or f"recall {result['recall']:.2f}"
+                print(f"  miss seed {seed} run {run:<4} {hint}  "
+                      f"[{shape}] {stack}")
 
     good = sum(1 for row in rows if row["ok"])
     rate = good / len(rows) if rows else 0.0
-    mean_depth = sum(len(row["stack"].split("→")) for row in rows) / max(len(rows), 1)
+    depth_sum = sum(len(row["stack"].split("→")) for row in rows)
+    mean_depth = depth_sum / max(len(rows), 1)
+    floor = int(len(rows) * FLOOR)
+    where = (f"mean {mean_depth:.1f} layers, max depth {args.depth_max}, "
+             f"seed{'s' if len(seeds) > 1 else ''} "
+             f"{','.join(str(seed) for seed in seeds)}")
     if args.check:
         # a floor, not a boast: random stacks are harder than named families, and
         # the gate exists so the floor can only go up
-        floor = int(len(rows) * FLOOR)
         if good < floor:
             print(f"FAIL stress {good}/{len(rows)} random stacks recovered "
                   f"(floor {floor})")
             for row in rows:
                 if not row["ok"]:
-                    print(f"  recall {row['recall']:.2f}  {row['stack']}")
+                    print(f"  [{row.get('shape', '?')}] recall "
+                          f"{row['recall']:.2f}  {row['stack']}")
             return 4
-        if good < len(rows):
-            print(f"ok stress {good}/{len(rows)} random stacks recovered "
-                  f"(floor {floor}, mean {mean_depth:.1f} layers)")
-            return 0
         print(f"ok stress {good}/{len(rows)} random stacks recovered "
-              f"({mean_depth:.1f} layers on average)")
+              f"(floor {floor}, {where})")
         return 0
-    print(f"{good}/{len(rows)} random stacks recovered ({rate * 100:.0f}%), "
-          f"mean depth {mean_depth:.1f} layers, seed {args.seed}")
-    if good < len(rows):
-        for row in rows:
-            if not row["ok"]:
-                print(f"  miss: {row['stack']} (recall {row['recall']:.2f})")
-    return 0
+    print(f"{good}/{len(rows)} random stacks recovered ({rate:.0%}), {where}")
+    for row in rows:
+        if not row["ok"]:
+            print(f"  miss: [{row.get('shape', '?')}] {row['stack']} "
+                  f"(recall {row['recall']:.2f})")
+    return 0 if good >= floor else 4
 
 
 if __name__ == "__main__":

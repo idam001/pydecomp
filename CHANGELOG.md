@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The layer before the payload, sold as the payload
+
+A random stack of `b64url → xor33` came back "recovered" and was not: the
+analyser wrote out the *base64 text* one layer above the payload and stopped.
+The check was `looks_like_python`, and a base64 blob is a long run of letters and
+digits with an `=` on the end, so the heuristic waved it through. Two payloads
+were found; the longer one won; the longer one was not the program.
+
+- `peel._is_program` replaces the heuristic where it matters: text counts as
+  source when it parses **and** has a statement in it. A base64 blob parses as one
+  enormous identifier, a docstring-only blob parses as one constant — neither is a
+  program, and neither can be the answer any more.
+- Payload ranking now puts *is this a program* ahead of *is this big*. Length is
+  still the tie-break inside each group, because a small stub is rarely the file.
+- The arithmetic folder lands with it: `_FoldArithmetic` reduces a
+  `bytes([b ^ K for b in <literal>])` to the literal it must equal before the
+  loader is re-parsed, so a key written inline is not a layer the analyser has to
+  guess at. It only runs when the ordinary pass found nothing.
+- `tools/stress_corpus.py` grew the axes the flat run was missing: `--seeds`,
+  `--depth-max`, `--deep` (up to 24 layers), and six loader **shapes** — bare,
+  `function`, `decoy` (a stub `exec` ahead of the real one), `chunks` (the loader
+  stored as string chunks and joined at runtime), `reversed-lines` (lines stored
+  backwards and re-ordered by `''.join(reversed(...))`). Grading also refuses an
+  output that is byte-identical to the input sample, so "echo the file back" can
+  never pass as a decompile.
+- The `stress` gate now runs 5 seeds × 40 stacks × up to 24 layers with the floor
+  at **196/200** (was 100 stacks, floor 95). It is green at **200/200, mean 9.2
+  layers**; the three residual misses from the flat run are gone.
+
 ### It finds the file; it no longer hands you a command
 
 A phone typing `KAMRUL~4.py` from `~/tools` used to get a red line and
