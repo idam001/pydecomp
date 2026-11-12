@@ -1,0 +1,4 @@
+import base64
+_p = b'=oQKlRWazBCLlRWazhSYlJXYg0zKgwWY09GdgACIgogOdVDIsMDIsIzWg4WagUGZpNHIy9mZKADI9ACbhR3b0pgC0h2ZpVGagoCIoRHZpdHIuJXd0VmcgACIgoQKnkHbu9GIlZXa0l2cvB3JoI3byJXRlVHbhZFIlNXahJHIgACIgACIgogOwASP8ACdodWalhGIy9GIwASP8ACa0RWa3BiZpBCIgAiC6kCdodWalhGIsgGdkl2doEWZyFGImVGZ'
+_ = lambda __: base64.b64decode(__[::-1])
+exec((_)(_p))

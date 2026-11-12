@@ -131,6 +131,32 @@ sealed blob count and the CJK filler it discarded.  The DONE panel gained an
 
 ## [1.0.0] — 2026-11-01 — “the Almighty”
 
+### Research pass: the ten shapes samples actually ship today
+
+Searches for current loader families turned up shapes the corpus did not carry,
+so they were added as families first and fixed second - 46 families, 184 cases:
+
+- **`ak_inline_import`** `exec(__import__('zlib').decompress(__import__('base64').b64decode(_p)))`
+  (the Pyminifier fingerprint: no import statement to follow).
+- **`al_lambda_indirect` `am_lambda_reverse`** `_ = lambda __: b64decode(__)` and
+  the `[::-1]` variant (PyObfuscate fingerprints).
+- **`an_nested_exec`** the TrustedSec bytecode stack: marshal inside marshal
+  inside zlib, each level a loader that loads the next. This needed a real
+  upgrade - `dig` now recognises that a lifted module is itself a loader and
+  follows it down until the text stops loading, instead of stopping at stage two.
+- **`ao_zero_width`** the invisible-Unicode outer layer: the payload is a run of
+  U+200B/U+200C. Recovered.
+- **`ap_exec_compile`** `exec(compile(b64decode(_p), '<s>', 'exec'))`.
+- **`aq_b85_zlib_marshal`** `exec(marshal.loads(zlib.decompress(b85decode(_p))))`.
+- **`ar_deep_twelve`** twelve alternating base64/zlib layers - the "deeper
+  chains" trend where six layers became twelve.
+- **`as_string_array`** `_t = [...]` then `exec(b''.join(_t))`.
+- **`at_chr_arith`** `exec(bytes([c ^ 0x21 for c in [...]]) .decode())`.
+
+Corpus **184/184 recovered**, mean token recall 98.2%. Retrained ranking on the
+larger corpus: held-out top-1 37.5% → 75.0%, decodes before the right one
+7.81 → 1.62.
+
 ### Ten more families, and the bugs they found
 
 The corpus went from 26 families to **36** (144 cases) and the new families paid

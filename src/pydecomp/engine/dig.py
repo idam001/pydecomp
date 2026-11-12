@@ -249,6 +249,35 @@ def _follow_expression_payload(source: str, trace: list, depth: int, seen: set,
             return found
     return None
 
+def _deeper(found, trace: list, depth: int, seen: set,
+            max_depth: int):
+    """A lifted module that is itself a loader: follow it down.
+
+    Multi-stage packers (TrustedSec's bytecode stack, PyProtect hybrid, the
+    nested-exec samples seen in the wild) put a *loader* inside a marshalled code
+    object, which itself was marshalled.  Lifting one level and stopping would
+    hand the operator stage two and call it the program.
+    """
+    if found is None or not getattr(found, "text", ""):
+        return found
+    # A stack can be arbitrarily deep (the TrustedSec chain is three marshal
+    # levels; samples in the wild run longer), so follow it until the text stops
+    # being a loader.  `seen` holds every digest already handled, so this cannot
+    # spin on a cycle.
+    for _level in range(8):
+        text = found.text
+        if not any(marker in text for marker in ("exec(", "eval(", "marshal.loads",
+                                                 "compile(")):
+            return found
+        inner = _follow_source(text, trace, depth + 1, seen, max_depth)
+        if inner is None or getattr(inner, "unchanged", False) \
+                or inner.kind not in ("source", "pseudo") or inner.text == text:
+            return found
+        trace.append("the lifted module is itself a loader — followed it down")
+        found = inner
+    return found
+
+
 def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
                   max_depth: int) -> Artifact | None:
     """Unknown bytes: container, pyc, marshal stream, text or encoded blob."""
@@ -410,7 +439,7 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
         trace.append(f"pyc header · CPython {version[0]}.{version[1]} · {len(data):,} B")
         found = _from_code(mod, version, trace, depth, seen, max_depth, data)
         if found is not None:
-            return found
+            return _deeper(found, trace, depth, seen, max_depth)
 
     if len(data) > 40:
         version, obj, consumed = parse_marshal_blob(data)
@@ -419,7 +448,7 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
                          f"({consumed:.0%} consumed)")
             found = _from_code(obj, version, trace, depth, seen, max_depth, data)
             if found is not None:
-                return found
+                return _deeper(found, trace, depth, seen, max_depth)
 
     text = _as_text(data)
     if text is not None:

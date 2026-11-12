@@ -1,0 +1,13 @@
+{
+ "expect": "recover",
+ "family": "an_nested_exec",
+ "layers": [
+  "zlib",
+  "marshal",
+  "marshal",
+  "marshal"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "nested"
+}

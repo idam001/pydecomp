@@ -232,7 +232,19 @@ FAMILIES: dict[str, dict] = {
     "ag_double_zip": {"layers": ("b64",), "tail": "zip2"},
     "ah_eval_chain": {"layers": ("b64",), "tail": "eval"},
     "ai_stacked_mixed": {"layers": ("b64", "zlib", "b64", "xor5a")},
-    "aj_string_table": {"layers": (), "tail": "table"},
+    "aj_string_table": {"layers": (), "tail": "table"},    # --- research-driven families: the shapes real samples actually use -----
+    "ak_inline_import": {"layers": ("zlib", "b64"), "tail": "inline_import"},
+    "al_lambda_indirect": {"layers": ("b64",), "tail": "lambda"},
+    "am_lambda_reverse": {"layers": ("b64",), "tail": "lambda_reverse"},
+    "an_nested_exec": {"layers": (), "tail": "nested"},
+    "ao_zero_width": {"layers": (), "tail": "zero_width"},
+    "ap_exec_compile": {"layers": ("b64",), "tail": "exec_compile"},
+    "aq_b85_zlib_marshal": {"layers": ("zlib", "base85"), "tail": "marshal_payload",
+                            "payload": "marshal"},
+    "ar_deep_twelve": {"layers": ("b64", "zlib") * 6, "tail": "exec"},
+    "as_string_array": {"layers": (), "tail": "array"},
+    "at_chr_arith": {"layers": (), "tail": "chr_arith"},
+
 
 }
 
@@ -276,6 +288,69 @@ def loader_for(cooked: bytes, layers: tuple[str, ...], tail: str) -> str:
         body = ("_data = base64.b64decode(_p)\n"
                 "_text = bytes(b ^ 0x2B for b in _data).decode('utf-8')\n"
                 "exec(_text)\n")
+    elif tail == "inline_import":
+        cooked, truth_layers = cook(raw, layers)
+        loader = ("_p = %r\n"
+                  "exec(__import__('zlib').decompress("
+                  "__import__('base64').b64decode(_p)))\n" % cooked)
+    elif tail == "lambda":
+        cooked, truth_layers = cook(raw, layers)
+        loader = ("import base64\n"
+                  "_p = %r\n"
+                  "_ = lambda __: base64.b64decode(__)\n"
+                  "exec((_)(_p))\n" % cooked)
+    elif tail == "lambda_reverse":
+        cooked = OPS["b64"][0](raw)[::-1]
+        truth_layers = ["reverse", "base64"]
+        loader = ("import base64\n"
+                  "_p = %r\n"
+                  "_ = lambda __: base64.b64decode(__[::-1])\n"
+                  "exec((_)(_p))\n" % cooked)
+    elif tail == "nested":
+        # TrustedSec's bytecode stack: marshal inside marshal inside zlib, each
+        # level a loader that loads the next
+        level = marshal.dumps(compile(source, "payload.py", "exec"))
+        for _ in range(3):
+            wrapper = b"from marshal import loads\nexec(loads(%r))" % level
+            level = marshal.dumps(compile(wrapper, "level", "exec"))
+        cooked = zlib.compress(level)
+        truth_layers = ["zlib", "marshal", "marshal", "marshal"]
+        loader = ("import zlib\nfrom marshal import loads\n"
+                  "exec(loads(zlib.decompress(%r)))\n" % cooked)
+    elif tail == "zero_width":
+        bits = "".join(
+            "".join("\u200b" if bit == "0" else "\u200c" for bit in format(byte, "08b"))
+            for byte in raw)
+        cooked = bits.encode("utf-8")
+        truth_layers = ["zero-width"]
+        loader = ("_s = %r\n"
+                  "_b = ''.join('0' if c == '\\u200b' else '1' for c in _s)\n"
+                  "exec(bytes(int(_b[i:i + 8], 2) for i in range(0, len(_b), 8))"
+                  ".decode())\n" % bits)
+    elif tail == "exec_compile":
+        cooked, truth_layers = cook(raw, layers)
+        loader = ("import base64\n"
+                  "_p = %r\n"
+                  "exec(compile(base64.b64decode(_p), '<payload>', 'exec'))\n" % cooked)
+    elif tail == "marshal_payload":
+        artifacts = compile_artifacts(source)
+        cooked, truth_layers = cook(artifacts["marshal"], layers)
+        loader = ("import base64, zlib, marshal\n"
+                  "_p = %r\n"
+                  "exec(marshal.loads(zlib.decompress(base64.b85decode(_p))))\n" % cooked)
+    elif tail == "array":
+        pieces = [raw[index:index + 24] for index in range(0, len(raw), 24)]
+        baked = ", ".join(repr(piece) for piece in pieces)
+        cooked = raw
+        truth_layers = ["string-array"]
+        loader = ("_t = [%s]\n"
+                  "exec(b''.join(_t).decode())\n" % baked)
+    elif tail == "chr_arith":
+        numbers = ", ".join(str(byte ^ 0x21) for byte in raw)
+        cooked = raw
+        truth_layers = ["chr-xor"]
+        loader = ("_n = [%s]\n"
+                  "exec(bytes([c ^ 0x21 for c in _n]).decode())\n" % numbers)
     elif tail == "alphabet":
         codec = spec["alphabet"]
         cooked, truth_layers = cook(raw, layers)
@@ -338,6 +413,69 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
         loader = "_p = ''.join(chr(n) for n in [" + numbers + "])\nexec(_p)\n"
         cooked = b""
         truth_layers = ["chr-array"]
+    elif tail == "inline_import":
+        cooked, truth_layers = cook(raw, layers)
+        loader = ("_p = %r\n"
+                  "exec(__import__('zlib').decompress("
+                  "__import__('base64').b64decode(_p)))\n" % cooked)
+    elif tail == "lambda":
+        cooked, truth_layers = cook(raw, layers)
+        loader = ("import base64\n"
+                  "_p = %r\n"
+                  "_ = lambda __: base64.b64decode(__)\n"
+                  "exec((_)(_p))\n" % cooked)
+    elif tail == "lambda_reverse":
+        cooked = OPS["b64"][0](raw)[::-1]
+        truth_layers = ["reverse", "base64"]
+        loader = ("import base64\n"
+                  "_p = %r\n"
+                  "_ = lambda __: base64.b64decode(__[::-1])\n"
+                  "exec((_)(_p))\n" % cooked)
+    elif tail == "nested":
+        # TrustedSec's bytecode stack: marshal inside marshal inside zlib, each
+        # level a loader that loads the next
+        level = marshal.dumps(compile(source, "payload.py", "exec"))
+        for _ in range(3):
+            wrapper = b"from marshal import loads\nexec(loads(%r))" % level
+            level = marshal.dumps(compile(wrapper, "level", "exec"))
+        cooked = zlib.compress(level)
+        truth_layers = ["zlib", "marshal", "marshal", "marshal"]
+        loader = ("import zlib\nfrom marshal import loads\n"
+                  "exec(loads(zlib.decompress(%r)))\n" % cooked)
+    elif tail == "zero_width":
+        bits = "".join(
+            "".join("\u200b" if bit == "0" else "\u200c" for bit in format(byte, "08b"))
+            for byte in raw)
+        cooked = bits.encode("utf-8")
+        truth_layers = ["zero-width"]
+        loader = ("_s = %r\n"
+                  "_b = ''.join('0' if c == '\\u200b' else '1' for c in _s)\n"
+                  "exec(bytes(int(_b[i:i + 8], 2) for i in range(0, len(_b), 8))"
+                  ".decode())\n" % bits)
+    elif tail == "exec_compile":
+        cooked, truth_layers = cook(raw, layers)
+        loader = ("import base64\n"
+                  "_p = %r\n"
+                  "exec(compile(base64.b64decode(_p), '<payload>', 'exec'))\n" % cooked)
+    elif tail == "marshal_payload":
+        artifacts = compile_artifacts(source)
+        cooked, truth_layers = cook(artifacts["marshal"], layers)
+        loader = ("import base64, zlib, marshal\n"
+                  "_p = %r\n"
+                  "exec(marshal.loads(zlib.decompress(base64.b85decode(_p))))\n" % cooked)
+    elif tail == "array":
+        pieces = [raw[index:index + 24] for index in range(0, len(raw), 24)]
+        baked = ", ".join(repr(piece) for piece in pieces)
+        cooked = raw
+        truth_layers = ["string-array"]
+        loader = ("_t = [%s]\n"
+                  "exec(b''.join(_t).decode())\n" % baked)
+    elif tail == "chr_arith":
+        numbers = ", ".join(str(byte ^ 0x21) for byte in raw)
+        cooked = raw
+        truth_layers = ["chr-xor"]
+        loader = ("_n = [%s]\n"
+                  "exec(bytes([c ^ 0x21 for c in _n]).decode())\n" % numbers)
     elif tail == "alphabet":
         codec = spec["alphabet"]
         cooked, truth_layers = cook(raw, layers)
