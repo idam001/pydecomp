@@ -215,8 +215,10 @@ def as_pyc(source: str, filename="sample.py") -> bytes:
     with open(path, "w") as handle:
         handle.write(source)
     # UNCHECKED_HASH keeps the fixture byte-identical between runs: the
-    # default (mtime) header would change on every rebuild
-    pyc = py_compile.compile(path, cfile=path + "c", doraise=True,
+    # default (mtime) header would change on every rebuild.  ``dfile`` keeps the
+    # code object's filename stable too, so the fixture does not depend on where
+    # the checkout lives (a fresh clone used to regenerate different bytes).
+    pyc = py_compile.compile(path, cfile=path + "c", dfile="sample.py", doraise=True,
                              invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)
     with open(pyc, "rb") as handle:
         blob = handle.read()
