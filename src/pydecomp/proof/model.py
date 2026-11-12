@@ -6,7 +6,7 @@ every run builds one :class:`Proof` and it is written next to the output as
 
 The schema is deliberately boring so anything can consume it::
 
-    {"tool": "pydecomp 10.0.0",
+    {"tool": "pydecomp 1.0.0",
      "input": {"name": ..., "sha256": ..., "bytes": N},
      "layers": [{"depth": 1, "transform": "base64", "backend": ..., "verified": true}],
      "tiers": {"semantic": [...], "structural": [], "syntactic": [], "unverified": []},
@@ -91,6 +91,8 @@ class Proof:
         self.lost: list[str] = []
         self.guarantee = GUARANTEE
         self.notes: list[str] = []
+        #: absolute path of the sample, so a reader can re-run the proof
+        self.input_path: str | None = None
 
     # ---------------------------------------------------------------- layers
     def add_layer(self, transform: str, backend: str = "", verified: bool = True,
@@ -160,6 +162,8 @@ class Proof:
             "lost": list(self.lost),
             "guarantee": self.guarantee,
         }
+        if self.input_path:
+            payload["input"]["path"] = self.input_path
         if self.output:
             payload["output"] = dict(self.output)
         if self.evidence:

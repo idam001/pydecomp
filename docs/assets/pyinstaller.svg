@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="804" height="474"
+viewBox="0 0 804 474" role="img" aria-label="pydecomp: PyInstaller CArchive → PYZ → source">
+<rect width="804" height="474" rx="10" fill="#0d1117" stroke="#30363d"/>
+<rect width="804" height="30" rx="10" fill="#161b22"/>
+<rect y="20" width="804" height="10" fill="#161b22"/>
+<circle cx="18" cy="15" r="5" fill="#f85149"/><circle cx="36" cy="15" r="5" fill="#d29922"/>
+<circle cx="54" cy="15" r="5" fill="#3fb950"/>
+<text x="786" y="19" text-anchor="end" fill="#8b949e"
+font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11">python dist/pydecomp.py frozen.bin …</text>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12.5" xml:space="preserve">
+<text x="18" y="60" fill="#8b949e">   ▸ Decompiling frozen.bin</text>
+<text x="18" y="77" fill="#8b949e">   ▸ stage 1   pyinstaller container: 3 python member(s) inside</text>
+<text x="18" y="94" fill="#8b949e">   ▸ stage 2   deepest member: script.pyc</text>
+<text x="18" y="111" fill="#8b949e">   ▸ stage 3   pyc header · CPython 3.13 · 301 B</text>
+<text x="18" y="128" fill="#8b949e">   ▸ stage 4   code object &lt;&lt;module&gt;&gt; 3.13 · 18 B bytecode</text>
+<text x="18" y="145" fill="#8b949e">   ▸ stage 5   no further text layer → rebuilt whole module as source</text>
+<text x="18" y="162" fill="#c9d1d9">   fidelity   output verified: still the recovered program</text>
+<text x="18" y="179" fill="#3fb950">   proof      proven 0/1 units (0%) · tier syntactic</text>
+<text x="18" y="196" fill="#8b949e">   ▸ writing output   frozen_deob.py</text>
+<text x="18" y="213" fill="#8b949e">   ▸ verifying   sha256 cb4234be2f3b5f47…</text>
+<text x="18" y="230" fill="#c9d1d9"></text>
+<text x="18" y="247" fill="#8b949e">   ╭─ DONE ────────────────────────────────────────────────────────────────────────────────────╮</text>
+<text x="18" y="264" fill="#8b949e">   │ source    frozen.bin   1,027 bytes                                                        │</text>
+<text x="18" y="281" fill="#8b949e">   │ result    python source   5 stages                                                        │</text>
+<text x="18" y="298" fill="#8b949e">   │ fingerprint unknown / hand-rolled                                                         │</text>
+<text x="18" y="315" fill="#8b949e">   │ output    frozen_deob.py   145 bytes                                                      │</text>
+<text x="18" y="332" fill="#8b949e">   │ proof     proven 0/1 units (0%) · tier syntactic                                          │</text>
+<text x="18" y="349" fill="#8b949e">   │ behaviour persistence                                                                     │</text>
+<text x="18" y="366" fill="#8b949e">   │ saved to  ~/frozen-out/frozen_deob.py                                                     │</text>
+<text x="18" y="383" fill="#8b949e">   │ elapsed   0.04s                                                                           │</text>
+<text x="18" y="400" fill="#8b949e">   ╰───────────────────────────────────────────────────────────────────────────────────────────╯</text>
+<text x="18" y="417" fill="#8b949e">   + frozen_deob.proof.json, frozen_deob.proof.md</text>
+</g>
+<text x="18" y="462" fill="#6e7681" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5">
+captured from dist/pydecomp.py · commit 1f05f56 · pydecomp: PyInstaller CArchive → PYZ → source</text>
+</svg>

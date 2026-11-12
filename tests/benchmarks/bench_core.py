@@ -26,7 +26,9 @@ from pydecomp.crypto.aes import AES  # noqa: E402
 from pydecomp.crypto.modes import ctr_xor  # noqa: E402
 from pydecomp.engine.dig import dig  # noqa: E402
 
-SANDBOX = 4.0                      # CI and phones are slower than a laptop
+# CI runners and phones are slower than a laptop.  The factor is stated in the
+# output so a green run never looks tighter than it was.
+SANDBOX = 8.0 if os.environ.get("CI") else 4.0
 
 BUDGETS = {
     "peel_1mb": 2.0,               # a 1 MB packed script, end to end

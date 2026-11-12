@@ -51,7 +51,4 @@ def failure(proof: Proof, require: str = "semantic") -> str | None:
     worst = proof.worst
     if order.index(worst) <= order.index(require):
         return None
-    counts = proof.counts
-    return (f"strict: {worst} output ({counts['semantic']} proven, "
-            f"{counts['structural']} structural, {counts['syntactic']} syntactic, "
-            f"{counts['unverified']} unverified) - nothing written")
+    return f"strict: {worst} output - nothing written"

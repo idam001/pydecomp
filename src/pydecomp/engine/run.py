@@ -62,7 +62,7 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
                 strict: bool = False, proof: bool = True,
                 annotate: bool = False, pyarmor_runtime: str | None = None,
                 pyarmor_key: str | None = None,
-                fetch_iocs: bool = False) -> str | None:
+                fetch_iocs: bool = False, html_report: bool = False) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
     global EXIT_CODE
     EXIT_CODE = 0
@@ -238,6 +238,7 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         body, name=name, digest=digest, size=raw_size, kind=artifact.kind,
         trace=trace, reports=report, notes=clean_notes,
         version=_last_module_version, identity=left_alone)
+    proof_obj.input_path = os.path.abspath(src_path)
     if annotate:
         mark = prefix_for(proof_obj)
         if mark and not body.startswith(mark):
@@ -245,11 +246,14 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     if strict:
         why = proof_failure(proof_obj)
         if why:
+            counts = proof_obj.counts
             emit(paint("✘ " + why, RED, BOLD))
-            for line in proof_obj.markdown().splitlines()[2:9]:
-                if line.strip():
-                    emit(paint("  " + line, GREY))
-            emit(paint("  nothing was written - this run did not prove the output", GREY))
+            emit(paint("  " + f"{counts['semantic']} proven · "
+                             f"{counts['structural']} structural · "
+                             f"{counts['syntactic']} syntactic · "
+                             f"{counts['unverified']} unverified", GREY))
+            emit(paint("  this run did not prove the output, so no file was written",
+                       GREY))
             EXIT_CODE = 3
             return None
     tier_tint = {"semantic": GREEN, "structural": CYAN}.get(proof_obj.worst, YELLOW)
@@ -296,8 +300,15 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     if proof:
         proof_obj.output = {
             "name": os.path.basename(path),
-            "bytes": len(text.encode("utf-8", "surrogateescape"))}
+            "bytes": len(text.encode("utf-8", "surrogateescape")),
+            "sha256": hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()}
         side = dict(side, **write_proof(proof_obj, path))
+        if html_report:
+            try:
+                from ..output.html import write as write_html
+                side["html"] = write_html(path, name, body, proof_obj.as_dict(), report)
+            except OSError:
+                pass
     if intel_path:
         side = dict(side, intel=intel_path) if side else {"intel": intel_path}
     if coverage is not None:

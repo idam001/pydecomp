@@ -37,7 +37,7 @@ equal — that was a real hole, closed in this release and pinned by a test.
 
 ```json
 {
-  "tool": "pydecomp 10.0.0",
+  "tool": "pydecomp 1.0.0",
   "input": {"name": "worker.py", "sha256": "…", "bytes": 2883},
   "kind": "source",
   "layers": [

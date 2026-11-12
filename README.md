@@ -7,6 +7,12 @@ Nuitka, cx_Freeze, py2exe, PEX, shiv, briefcase, Cython, marshal, `.pyc`
 **Every output ships with a machine-checkable proof. pydecomp refuses to write
 source it cannot verify.**  By [Idam Emmanuel](https://github.com/idam001).
 
+[![CI](https://github.com/idam001/pydecomp/actions/workflows/ci.yml/badge.svg)](https://github.com/idam001/pydecomp/actions/workflows/ci.yml)
+![version](https://img.shields.io/badge/version-1.0.0-3fb950)
+![python](https://img.shields.io/badge/python-3.9%20%E2%80%93%203.15-58a6ff)
+![deps](https://img.shields.io/badge/runtime%20dependencies-none-3fb950)
+![gates](https://img.shields.io/badge/gates-27%2F27-3fb950)
+
 ```
 sample_deob.py          the recovered program
 sample_deob.proof.json  what was peeled, which backend decompiled it,
@@ -53,6 +59,8 @@ unit, and writes the result next to the output:
 | **syntactic** | it compiles; equivalence not proven | `--annotate` marks it |
 | **unverified** | it does not compile; kept because dropping it loses code | `--annotate` marks it |
 
+![PyArmor 9 static unpack, proven semantic](docs/assets/proof-pyarmor.svg)
+
 ```console
 $ pydecomp worker.py          # a real PyArmor 9 payload, runtime beside it
    runtime   ~/case/pyarmor_runtime_000000/pyarmor_runtime.so  (used for the runtime key)
@@ -64,6 +72,31 @@ $ pydecomp worker.py          # a real PyArmor 9 payload, runtime beside it
 
 `--strict` writes **nothing** unless every unit is instruction-identical, and
 exits `3`. It is the only Python recovery tool that will refuse its own output.
+
+![pydecomp --strict refuses to write what it cannot prove](docs/assets/strict-refusal.svg)
+
+### Verify a proof yourself
+
+A proof is only worth something if somebody else can check it. One flag
+re-derives it from the sample and the file that was written:
+
+```console
+$ pydecomp --check-proof out/worker_deob.proof.json
+   proof  worker_deob.proof.json
+     ok   schema           all keys present
+     ok   guarantee        no input byte was executed, imported, or compiled
+     ok   input sha256     recorded 58c1b15b93f2c34b… / now 58c1b15b93f2c34b…
+     ok   output sha256    ~/out/worker_deob.py
+     ok   tiers reproduce  recomputed semantic=3, structural=0, syntactic=0
+   verified: this file is what the proof says it is
+```
+
+Change one line of the output and the same command exits `4` with
+`DRIFT: the proof no longer describes these files`. `--html` writes a
+self-contained `.report.html` (source, proof, indicators, guarantee) that opens
+offline — no CDN, no fonts, no scripts.
+
+![PyInstaller CArchive to source](docs/assets/pyinstaller.svg)
 
 ## What it handles
 

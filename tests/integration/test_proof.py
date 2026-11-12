@@ -81,7 +81,7 @@ with open(weak, "wb") as handle:
 weak_out = os.path.join(work, "weak")
 weak_done = run(weak, "-o", weak_out, "--strict", "--no-color", "--no-anim")
 ok(weak_done.returncode == 3, f"an unproven run exits 3: got {weak_done.returncode}")
-ok("nothing was written" in weak_done.stdout,
+ok("nothing written" in weak_done.stdout,
    f"the refusal says nothing was written: {weak_done.stdout[-300:]}")
 ok(not os.path.isdir(weak_out) or not sources(weak_out),
    f"strict left no source behind: {os.listdir(weak_out) if os.path.isdir(weak_out) else []}")

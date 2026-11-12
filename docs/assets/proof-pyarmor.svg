@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="804" height="542"
+viewBox="0 0 804 542" role="img" aria-label="pydecomp: PyArmor 9 static unpack, proven semantic">
+<rect width="804" height="542" rx="10" fill="#0d1117" stroke="#30363d"/>
+<rect width="804" height="30" rx="10" fill="#161b22"/>
+<rect y="20" width="804" height="10" fill="#161b22"/>
+<circle cx="18" cy="15" r="5" fill="#f85149"/><circle cx="36" cy="15" r="5" fill="#d29922"/>
+<circle cx="54" cy="15" r="5" fill="#3fb950"/>
+<text x="786" y="19" text-anchor="end" fill="#8b949e"
+font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11">python dist/pydecomp.py worker.py …</text>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12.5" xml:space="preserve">
+<text x="18" y="60" fill="#c9d1d9">   runtime   ~/pyarmor/pyarmor_runtime_000000/pyarmor_runtime.so  (used fo…</text>
+<text x="18" y="77" fill="#8b949e">   ▸ Decompiling worker.py</text>
+<text x="18" y="94" fill="#8b949e">   ▸ stage 1   PY000000 payload (967 B) - code objects are encrypted with a …</text>
+<text x="18" y="111" fill="#8b949e">   ▸ stage 2   build banner: Pyarmor 9.0.0 (trial), 000000, non-profits, 202…</text>
+<text x="18" y="128" fill="#8b949e">   ▸ stage 3   runtime package: pyarmor_runtime_000000 (key material lives i…</text>
+<text x="18" y="145" fill="#8b949e">   ▸ stage 4   carved from payload: PY000000, nonce-000000, u\{EN4,w</text>
+<text x="18" y="162" fill="#8b949e">   ▸ stage 5   PyArmor 8+ blob · serial 000000 · CPython 3.13 · AES-CTR acro…</text>
+<text x="18" y="179" fill="#8b949e">   ▸ stage 6   static unpack: 1 code object(s) recovered · key 11223344… ver…</text>
+<text x="18" y="196" fill="#8b949e">   ▸ stage 7   1 code object(s) lifted to source</text>
+<text x="18" y="213" fill="#c9d1d9">   fidelity   output verified: still the recovered program</text>
+<text x="18" y="230" fill="#3fb950">   proof      proven 3/3 units (100%) · tier semantic</text>
+<text x="18" y="247" fill="#8b949e">   ▸ writing output   worker_deob.py</text>
+<text x="18" y="264" fill="#8b949e">   ▸ verifying   sha256 5f65c251f916f98e…</text>
+<text x="18" y="281" fill="#c9d1d9"></text>
+<text x="18" y="298" fill="#8b949e">   ╭─ DONE ────────────────────────────────────────────────────────────────────────────────────╮</text>
+<text x="18" y="315" fill="#8b949e">   │ source    worker.py   2,883 bytes                                                         │</text>
+<text x="18" y="332" fill="#8b949e">   │ result    python source   7 stages                                                        │</text>
+<text x="18" y="349" fill="#8b949e">   │ fingerprint PyArmor 8/9 (encrypted code objects)                                          │</text>
+<text x="18" y="366" fill="#8b949e">   │ output    worker_deob.py   543 bytes                                                      │</text>
+<text x="18" y="383" fill="#8b949e">   │ proof     proven 3/3 units (100%) · tier semantic                                         │</text>
+<text x="18" y="400" fill="#8b949e">   │ indicators 1 url                                                                          │</text>
+<text x="18" y="417" fill="#8b949e">   │ cleaned   dropped 1 dead branch(es)                                                       │</text>
+<text x="18" y="434" fill="#8b949e">   │ saved to  ~/pyarmor-out/worker_deob.py                                                    │</text>
+<text x="18" y="451" fill="#8b949e">   │ elapsed   0.07s                                                                           │</text>
+<text x="18" y="468" fill="#8b949e">   ╰───────────────────────────────────────────────────────────────────────────────────────────╯</text>
+<text x="18" y="485" fill="#8b949e">   + worker_deob.proof.json, worker_deob.proof.md</text>
+</g>
+<text x="18" y="530" fill="#6e7681" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5">
+captured from dist/pydecomp.py · commit 1f05f56 · pydecomp: PyArmor 9 static unpack, proven semantic</text>
+</svg>

@@ -86,6 +86,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pick", type=int, default=None, metavar="N",
                     help="when several files share a name, take the Nth newest "
                          "(default: the newest, and say so)")
+    ap.add_argument("--html", action="store_true",
+                    help="also write a self-contained .report.html (source, proof, "
+                         "indicators) that opens offline")
+    ap.add_argument("--check-proof", default=None, metavar="FILE",
+                    help="re-derive a .proof.json from the sample and the output; "
+                         "exits 4 if they have drifted")
     ap.add_argument("--fetch-iocs", action="store_true",
                     help="fetch the URLs the loader would have fetched and unpack "
                          "the responses statically (opt-in network access)")
@@ -119,6 +125,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_anim:
         INTERACTIVE = False
 
+    if args.check_proof:
+        from .proof.verify import render as render_check, summary as summary_check
+        from .proof.verify import verify as verify_proof
+        result = verify_proof(args.check_proof)
+        print()
+        for line in render_check(result).splitlines():
+            tint = GREEN if result["ok"] else RED
+            print("   " + paint(line, tint if line.startswith(("proof", result["message"]))
+                                else WHITE))
+        print("   " + paint(summary_check(result), GREEN if result["ok"] else RED))
+        print()
+        if not result["checks"]:
+            return 2
+        return 0 if result["ok"] else 4
+
     if args.selftest:
         return selftest()
 
@@ -147,7 +168,8 @@ def main(argv: list[str] | None = None) -> int:
                                        annotate=args.annotate,
                                        pyarmor_runtime=args.pyarmor_runtime,
                                        pyarmor_key=args.pyarmor_key,
-                                       fetch_iocs=args.fetch_iocs)
+                                       fetch_iocs=args.fetch_iocs,
+                                       html_report=args.html)
             if written:
                 return 0
             from .engine import run as _run
@@ -163,7 +185,8 @@ def main(argv: list[str] | None = None) -> int:
                            proof=not args.no_proof, annotate=args.annotate,
                            pyarmor_runtime=args.pyarmor_runtime,
                            pyarmor_key=args.pyarmor_key,
-                           fetch_iocs=args.fetch_iocs)
+                           fetch_iocs=args.fetch_iocs,
+                           html_report=args.html)
         if path and args.verify:
             try:
                 try:

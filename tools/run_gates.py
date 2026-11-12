@@ -55,6 +55,7 @@ SUITE = {
     "agents": (GATES / "test_agents.py", {}, False),
     "bench": (BENCH, {}, False),
     "perf": (PERF, {}, True),
+    "evidence": (ROOT / "tools" / "make_evidence.py", {}, False),
     "examples": (EXAMPLES, {}, False),
 }
 
@@ -69,6 +70,8 @@ def run(name: str, verbose: bool = False) -> dict:
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src"),
            "PYTHONDONTWRITEBYTECODE": "1", "NO_COLOR": "1", **extra}
     command = [sys.executable, "-u", str(path)]
+    if path.name == "make_evidence.py":
+        command.append("--check")
     if heavy:
         # the native gate parses a 92 KB ELF with a pure-Python DWARF reader
         command = ["/bin/sh", "-c", f"ulimit -v 4000000; exec {' '.join(command)}"]
