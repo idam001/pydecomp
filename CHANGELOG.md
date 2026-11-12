@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### A deleted branch, and the soundness bug behind it
+
+Cleaning a plain, unobfuscated program deleted a live `elif` and still reported
+*output verified*.  The cause was in the opaque-predicate prover: it sampled a
+free name over a fixed integer grid, so `if word == 34:` was false for every
+sample and the branch was "proved" dead.
+
+- **The prover is now sound.**  A free name gets the whole integer range as its
+  bound and the analysis carries intervals and parities through the arithmetic,
+  which still decides every classic idiom — `x * x >= 0`, `x ** 2 >= 0`,
+  `x - x == 0`, `x ^ x == 0`, `x & ~x`, `len(x) >= 0`, `abs(x) >= 0`,
+  `x * (x + 1) % 2 == 0`, `(x | 1) % 2 == 1` — while `word == 34`, `state != 3`
+  and `x > 3` stay undecided and keep their branches.
+- **Fidelity now checks control flow.**  If cleaning removes a decision point
+  without a pass recording a proof for it, the unpacked text is written instead
+  and the rollback is reported: *cleaning removed control flow (3 -> 2 decision
+  point(s)) with no recorded proof*.
+- New `docs/limits.md`: what pydecomp handles (gated), what no static tool can
+  do (runtime-derived keys, native-held keys, compiled-away code), and where the
+  frontier actually is.
+- 23 new unit tests (`test_opaque_sound.py`) and 2 new adversarial checks
+  (25 total).
+
 ### Payload intelligence for sealed payloads
 
 When a packer seals its payload, `<stem>_intel.txt` now lands next to the

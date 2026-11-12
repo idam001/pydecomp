@@ -150,10 +150,34 @@ def main():
     ok(any(name.endswith(".py") and "_copy" in name for name in files3),
        "the untouched file is saved as a copy")
 
+    # 4. cleaning must never delete live code from a plain program
+    plain_branch = os.path.join(work, "branchy.py")
+    with open(plain_branch, "w") as handle:
+        handle.write(
+            "def run(words):\n"
+            "    out = []\n"
+            "    for word in words:\n"
+            "        if isinstance(word, str):\n"
+            "            out.append(word)\n"
+            "        elif word == 34:\n"
+            "            out.append('seen-thirty-four')\n"
+            "    return out\n")
+    out4 = os.path.join(work, "branchy_out")
+    done4 = run(plain_branch, out4)
+    ok(done4.returncode == 0, "branchy sample runs")
+    files4 = os.listdir(out4) if os.path.isdir(out4) else []
+    body4 = ""
+    for name4 in files4:
+        if name4.endswith(".py"):
+            body4 = open(os.path.join(out4, name4), encoding="utf-8").read()
+    ok("seen-thirty-four" in body4,
+       "a free name compared to a literal is not treated as an opaque predicate")
+    ok("word == 34" in body4, "the live elif survived cleaning")
+
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1
-    print(f"\n{23} checks passed — all good")
+    print(f"\n{25} checks passed — all good")
     return 0
 
 

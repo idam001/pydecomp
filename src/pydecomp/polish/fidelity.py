@@ -9,7 +9,11 @@ container, and the cleaned text is only kept when it is genuinely better:
   written instead;
 * if cleaning removed most of the definitions, the original is written instead;
 * if the cleaned text is a wall of literals (a string dump, a base64 blob) and
-  the original was real source, the original is written instead.
+  the original was real source, the original is written instead;
+* if cleaning *removed control flow* - a branch, a loop, a conditional
+  expression - without a pass reporting a proof for it, the original is written
+  instead.  That check exists because a pass once deleted a live ``elif`` while
+  claiming the file was verified.
 
 Every rollback is reported, with the reason, in the console line and in the
 report - a silent rollback would be its own kind of lie.
@@ -30,6 +34,21 @@ def _parse(text: str):
         return _ast.parse(text)
     except (SyntaxError, ValueError):
         return None
+
+
+FLOW_KINDS = (_ast.If, _ast.While, _ast.For, _ast.AsyncFor, _ast.IfExp)
+
+# A note that explains why control flow may legitimately disappear.
+PROOF_NOTES = ("opaque", "dead", "unflatten", "for-loop", "state machine",
+               "guard", "neutralis")
+
+
+def flow(text: str) -> int:
+    """How many decision points this text contains."""
+    tree = _parse(text)
+    if tree is None:
+        return 0
+    return sum(1 for node in _ast.walk(tree) if isinstance(node, FLOW_KINDS))
 
 
 def profile(text: str) -> dict:
@@ -57,7 +76,7 @@ def profile(text: str) -> dict:
     }
 
 
-def verify(unpacked: str, cleaned: str) -> dict:
+def verify(unpacked: str, cleaned: str, notes: list | None = None) -> dict:
     """Decide which text gets written.  Returns {"text", "kept", "reason", ...}."""
     before = profile(unpacked)
     after = profile(cleaned)
@@ -75,10 +94,14 @@ def verify(unpacked: str, cleaned: str) -> dict:
         comparison = compare(unpacked, cleaned)
         kept, lost = comparison["kept"], comparison["lost"]
         total = max(kept + lost, 1)
+        proved = any(key in str(note).lower() for note in (notes or []) for key in PROOF_NOTES)
         if lost / total > 0.2:
             rollback = (f"cleaning lost {lost} of {total} definition(s)")
         elif kept == 0 and before["definitions"] > 0:
             rollback = "cleaning removed every definition"
+        elif not proved and flow(cleaned) < flow(unpacked):
+            rollback = (f"cleaning removed control flow ({flow(unpacked)} -> "
+                        f"{flow(cleaned)} decision point(s)) with no recorded proof")
 
     if rollback:
         verdict.update({"kept": "unpacked", "reason": rollback, "text": unpacked})

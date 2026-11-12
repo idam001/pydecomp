@@ -105,7 +105,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     fidelity = None
     if artifact.kind in ("source", "pseudo"):
         from ..polish.fidelity import summary as fidelity_summary, verify as verify_fidelity
-        fidelity = verify_fidelity(_strip_pydecomp_preamble(artifact.text), body)
+        fidelity = verify_fidelity(_strip_pydecomp_preamble(artifact.text), body,
+                                   notes=clean_notes)
         if artifact.stalled:
             fidelity = dict(fidelity, kept="unverified",
                             reason="payload still encrypted — the output is the loader")
