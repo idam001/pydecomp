@@ -9,6 +9,7 @@ from ..decoders.registry import (
     TRANSFORMS, _mostly_text, _printable_count, _transform_allowed,
 )
 from ..decoders.xor import _score_text, xor_best
+from ..learn import rank as _rank
 from ..limits import MAX_LAYERS
 from ..terminal.color import step
 
@@ -77,7 +78,17 @@ def _deep_decode_uncached(blob: bytes, depth: int, limit: int):
                 if text is not None and len(xor_plain) >= 32:
                     nxt.append((xor_plain, chain + [f"xor(key={xor_key.hex()})"]))
             is_text = _mostly_text(data, 0.88)
-            for name, fn in TRANSFORMS.items():
+            # the learned ranking only reorders: every decoder below is still
+            # tried, so a bad guess costs a decode, never a payload
+            order = _rank(TRANSFORMS, data)
+            # url-safe and plain base64 are the same decoder on ordinary data;
+            # prefer the plain one so the proof names the layer the reader knows
+            if "base64" in order and "b64url" in order \
+                    and b"-" not in data and b"_" not in data:
+                order.remove("base64")
+                order.insert(order.index("b64url"), "base64")
+            for name in order:
+                fn = TRANSFORMS[name]
                 if not _transform_allowed(name, data, is_text):
                     continue
                 try:

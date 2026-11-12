@@ -116,7 +116,52 @@ sealed blob count and the CJK filler it discarded.  The DONE panel gained an
 - 20 new unit tests (`test_payload_intel.py`, `test_sealed.py`) and 6 new
   adversarial checks (23 total).
 
+- **Corpus and evaluator** - `tools/make_corpus.py` builds 26 families × 4 real
+  payloads (104 cases) with digest-pinned truths; `tools/eval_corpus.py` grades
+  every recovered file against its payload. Latest: 104/104, mean token recall
+  96.2%, 0.44 s. Two engine upgrades came out of it: `marshal.loads(_p)` is now
+  a payload sink resolved with the static marshal reader, and a decode is never
+  folded into an `exec` sink when the result is not Python.
+- **Learned decoder ranking** - `pydecomp.learn` scores the 22 decoders from
+  blob features and orders them; weights trained from the corpus by
+  `tools/train_learn.py` and committed as integers. Held-out payload: top-1
+  37.5% → 50.0%, decodes before the right one 8.75 → 2.00. Ranking only orders
+  candidates, so it can cost time but never a payload.
+- Gates 27 → 29 (`corpus`, `learn`).
+
 ## [1.0.0] — 2026-11-01 — “the Almighty”
+
+### The corpus, and a ranking trained on it
+
+A claim that lives only in prose cannot be checked, so the project now ships the
+data it is measured against and the instrument that measures it.
+
+- **`corpus/`** - 26 families of cooking (base64, b64 twice, zlib/lzma/gzip/bz2,
+  base32/85/ascii85/url-safe, hex, escapes, xor, reverse, rot13, three- and
+  four-layer mixes, chr arrays, zip members, marshal/pyc/bare-marshal/zlib-marshal
+  and one family that must be refused) × four real payload programs = **104 cases**,
+  each with a `truth.json` naming the payload by digest. `tools/make_corpus.py`
+  builds it; `--check` fails when the committed corpus drifts.
+- **`tools/eval_corpus.py`** - runs the analyser on every case and grades the file
+  it wrote: it must compile and keep at least 90% of the payload's
+  behaviour-bearing tokens, comparing string *values* rather than spellings.
+  Latest: **104/104 recovered**, mean token recall 96.2%, 0.44 s. Results are
+  committed at `docs/corpus-results.md`.
+- Two real upgrades fell out of families that failed:
+  `marshal.loads(_p)` is now recognised as a payload sink and read with the static
+  marshal reader (20 cases), and the folder no longer rewrites the argument of an
+  `exec` sink into the plaintext it would have run (a file that never existed).
+- **`pydecomp.learn`** - a one-vs-rest linear model over 24 features of the blob
+  (size, entropy, alphabet membership, container magic, base64/base32/hex
+  quadratic tells) scores the 22 decoders and orders them before the search.
+  Trained by `tools/train_learn.py` on the corpus with an averaged perceptron in
+  plain Python; weights committed as integers in `pydecomp/learn/weights.py`.
+  Held-out payload, never trained on: top-1 **37.5% → 50.0%**, decodes before the
+  right one **8.75 → 2.00**. Ranking only orders candidates - a bad guess costs a
+  decode, never a payload.
+- Gates 27 → 29: `corpus` fails if a case that used to be recovered stops being
+  recovered; `learn` fails if the committed weights stop beating table order or
+  the corpus moves out from under them.
 
 ### "It proves what it recovered"
 

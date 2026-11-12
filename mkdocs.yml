@@ -36,6 +36,7 @@ theme:
     repo: fontawesome/brands/github
 
 nav:
+  - Corpus results: corpus-results.md
   - Home: index.md
   - Getting started:
       - Install: install.md

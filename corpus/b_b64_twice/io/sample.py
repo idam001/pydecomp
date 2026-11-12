@@ -1,0 +1,3 @@
+import base64, codecs, zlib, lzma, gzip, bz2, marshal
+_p = b'YVcxd2IzSjBJRzl6Q2dwa1pXWWdjMmw2WlhNb1ptOXNaR1Z5S1RvS0lDQWdJR1p2ZFc1a0lEMGdlMzBLSUNBZ0lHWnZjaUJ1WVcxbElHbHVJRzl6TG14cGMzUmthWElvWm05c1pHVnlLVG9LSUNBZ0lDQWdJQ0JtYjNWdVpGdHVZVzFsWFNBOUlHOXpMbkJoZEdndVoyVjBjMmw2WlNodmN5NXdZWFJvTG1wdmFXNG9abTlzWkdWeUxDQnVZVzFsS1NrS0lDQWdJSEpsZEhWeWJpQm1iM1Z1WkFvPQ=='
+exec(base64.b64decode(base64.b64decode(_p)))

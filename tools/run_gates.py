@@ -57,10 +57,12 @@ SUITE = {
     "perf": (PERF, {}, True),
     "evidence": (ROOT / "tools" / "make_evidence.py", {}, False),
     "examples": (EXAMPLES, {}, False),
+    "corpus": (ROOT / "tools" / "eval_corpus.py", {}, False),
+    "learn": (ROOT / "tools" / "train_learn.py", {}, False),
 }
 
 GOOD = re.compile(r"(all good|passed|instruction-identical|probe shapes recovered|"
-                  r"semantic score|examples recovered)", re.I)
+                  r"semantic score|examples recovered|ok corpus|ok learned ranking)", re.I)
 
 
 def run(name: str, verbose: bool = False) -> dict:
@@ -72,6 +74,12 @@ def run(name: str, verbose: bool = False) -> dict:
     command = [sys.executable, "-u", str(path)]
     if path.name == "make_evidence.py":
         command.append("--check")
+    # the corpus and the learned ranking are statements about committed files,
+    # so the gate is the checker, not the builder
+    if path.name == "train_learn.py":
+        command.append("--check")
+    if path.name == "eval_corpus.py":
+        command.append("--quiet")
     if heavy:
         # the native gate parses a 92 KB ELF with a pure-Python DWARF reader
         command = ["/bin/sh", "-c", f"ulimit -v 4000000; exec {' '.join(command)}"]

@@ -1,0 +1,10 @@
+{
+ "expect": "recover",
+ "family": "a_b64",
+ "layers": [
+  "b64"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "exec"
+}

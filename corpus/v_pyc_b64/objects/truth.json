@@ -1,0 +1,10 @@
+{
+ "expect": "recover",
+ "family": "v_pyc_b64",
+ "layers": [
+  "b64"
+ ],
+ "payload": "objects",
+ "payload_sha256": "44142e6908aad02dce85d44ea85eda1772ac8a13a78e8d5773a5beac43d2e2c5",
+ "tail": "pychead"
+}

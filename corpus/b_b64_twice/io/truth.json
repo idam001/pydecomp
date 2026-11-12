@@ -1,0 +1,11 @@
+{
+ "expect": "recover",
+ "family": "b_b64_twice",
+ "layers": [
+  "b64",
+  "b64"
+ ],
+ "payload": "io",
+ "payload_sha256": "61bc212563ca812468bb947e2eace5edcf11d89350973f79e7f105321d4e8ce2",
+ "tail": "exec"
+}

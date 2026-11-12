@@ -557,10 +557,30 @@ def _interesting(node) -> bool:
 
 
 class _Folder(_ast.NodeTransformer):
+    #: calls whose argument stays exactly as written
+    SINKS = {"exec", "eval", "compile"}
+
     def __init__(self, env, budget):
         self.env = env
         self.budget = budget
         self.folded = 0
+
+    def visit_Call(self, node):                        # noqa: N802
+        func = node.func
+        name = func.id if isinstance(func, _ast.Name) else getattr(func, "attr", "")
+        if name not in self.SINKS:
+            return self.generic_visit(node)
+        # Inside an exec/eval sink, a folded *string* is how obfuscators spell
+        # names (`'ex'+'ec'`) and folding it is the point.  A folded *bytes*
+        # value is different: it replaces the loader with the plaintext it would
+        # have run, and when that plaintext is not Python the operator is handed
+        # `exec(b'not a program')` - a file that never existed.  The peeler
+        # recovers real payloads properly, so leave bytes alone here.
+        self._in_sink = getattr(self, "_in_sink", 0) + 1
+        try:
+            return self.generic_visit(node)
+        finally:
+            self._in_sink -= 1
 
     def visit(self, node):
         if isinstance(node, _SKIP):
@@ -572,6 +592,14 @@ class _Folder(_ast.NodeTransformer):
             value = evaluate(node, self.env, self.budget)
         except (Unevaluable, RecursionError):
             return node
+        if getattr(self, "_in_sink", 0) and isinstance(value, (bytes, bytearray)):
+            from ..decoders.emoji import parses_as_python
+            try:
+                text = bytes(value).decode("utf-8")
+            except UnicodeDecodeError:
+                text = None
+            if text is None or not parses_as_python(text):
+                return node
         replacement = _literal_node(value)
         if replacement is None:
             return node

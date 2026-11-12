@@ -1,0 +1,3 @@
+import base64, codecs, zlib, lzma, gzip, bz2, marshal
+_p = b'L2kup3ZtH2Imp2yiowbXVPNtVTEyMvOsK2yhnKEsKlumMJkzYPObo3A0YPOjo3W0CGD0Zlx6PvNtVPNtVPNtp2IfMv5bo3A0VQ0tnT9mqNbtVPNtVPNtVUAyoTLhpT9lqPN9VUOipaDXPvNtVPOxMJLtqKWfXUAyoTLcBtbtVPNtVPNtVUWyqUIlovOzW2u0qUOmBv8ir3AyoTLhnT9mqU06r3AyoTLhpT9lqU0iWjbXMTIzLKIfqPN9VSAyp3Aco24bW2I4LJ1joTHhL29gWlxX'
+exec(base64.b64decode(codecs.decode(_p.decode(), 'rot13').encode()))
