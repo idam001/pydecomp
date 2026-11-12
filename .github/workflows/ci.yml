@@ -60,6 +60,11 @@ jobs:
       - name: single-file build is current
         run: python tools/build_single.py --check
       - name: gates
+        # the gate suite drives committed fixtures: .pyc compiled by one
+        # interpreter and ELF .so payloads for one ABI.  It is a statement about
+        # ubuntu + 3.13, which is where the fixtures and the shipped file are
+        # made; everywhere else the unit suite and the smoke above do the work.
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
         run: python tools/run_gates.py
       - name: the shipped single file runs on a clean machine
         run: |
