@@ -6,13 +6,14 @@ import gzip
 import hashlib
 import io
 import lzma
+import os
 import re
 import tarfile
 import zipfile
 
 from ..bytecode.codeobj import CodeObj
 from ..bytecode.harvest import harvest_constants, harvest_inline_text
-from ..bytecode.magic import parse_pyc
+from ..bytecode.magic import identify_implementation, parse_pyc
 from ..bytecode.marshal_reader import parse_marshal_blob
 from ..core.util import _as_text, _payload_variants, looks_like_python
 from ..decoders.emoji import parses_as_python
@@ -51,7 +52,7 @@ def carve_strings(data: bytes, minimum: int = 6, limit: int = 400) -> list[str]:
     return out
 
 def _from_code(mod: CodeObj, version: tuple, trace: list, depth: int,
-               seen: set, max_depth: int) -> Artifact | None:
+               seen: set, max_depth: int, raw: bytes = b"") -> Artifact | None:
     """Bytecode in hand: look for a hidden string, then recorded constants."""
     label = mod.qualname or mod.name
     trace.append(f"code object <{label}> 3.{version[1]} · {len(mod.code):,} B bytecode")
@@ -78,6 +79,19 @@ def _from_code(mod: CodeObj, version: tuple, trace: list, depth: int,
             return found
 
     text = lift_module(mod, version)
+    # A stronger decompiler, if this machine has one installed, may beat the
+    # bundled lifter - but only when its output grades strictly better against
+    # the same code object.  Without one installed this is a no-op.
+    try:
+        from ..bytecode.backends import LAST, try_upgrade
+        upgraded = try_upgrade(raw, mod, version, text)
+        if upgraded:
+            trace.append("backend " + str(LAST.get("backend"))
+                         + " produced a stronger reconstruction ("
+                         + str(LAST.get("tier")) + ")")
+            text = upgraded
+    except Exception:                            # noqa: BLE001 - never fail a run
+        pass
     stalled, blobs, total = _encrypted_payload(mod)
     if LIFT_QUALITY["proven"]:
         trace.append("no further text layer → rebuilt whole module as source")
@@ -346,10 +360,40 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
     except Exception:                                # noqa: BLE001
         pass
 
+    impl = identify_implementation(data)
+    if impl["implementation"] not in ("unknown", "cpython"):
+        trace.append(f"interpreter: {impl['implementation']} - {impl['note']}")
+        if impl["implementation"] == "pypy":
+            # PyPy's magic is not CPython's, but the stream after it often parses
+            # with the closest table.  If it does, say "approximate" and lift.
+            for skip in (16, 12, 8, 4):
+                version_guess, obj, consumed = parse_marshal_blob(data[skip:])
+                if obj is None:
+                    continue
+                trace.append(f"lifted with the closest CPython table "
+                             f"({version_guess[0]}.{version_guess[1]}) - approximate")
+                found = _from_code(obj, version_guess, trace, depth, seen, max_depth,
+                                   data[skip:])
+                if found is not None:
+                    return found
+        if impl["implementation"] == "brython":
+            text = _as_text(data)
+            if text is not None and looks_like_python(text):
+                trace.append("Brython source: read as source, not bytecode")
+                found = _follow_source(text, trace, depth, seen, max_depth)
+                if found is not None:
+                    return found
+        if impl["implementation"] in ("micropython", "jython", "ironpython"):
+            trace.append("no bytecode reader for this interpreter: carving "
+                         "strings and structure instead of inventing code")
+            text = ("# recovered structure from " + impl["implementation"] + "\n"
+                    + "\n".join(carve_strings(data)) + "\n")
+            return Artifact(text, "strings", trace, _score(text, "strings"))
+
     version, mod = parse_pyc(data)
     if mod is not None:
         trace.append(f"pyc header · CPython {version[0]}.{version[1]} · {len(data):,} B")
-        found = _from_code(mod, version, trace, depth, seen, max_depth)
+        found = _from_code(mod, version, trace, depth, seen, max_depth, data)
         if found is not None:
             return found
 
@@ -358,7 +402,7 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
         if obj is not None:
             trace.append(f"marshal stream · CPython {version[0]}.{version[1]} "
                          f"({consumed:.0%} consumed)")
-            found = _from_code(obj, version, trace, depth, seen, max_depth)
+            found = _from_code(obj, version, trace, depth, seen, max_depth, data)
             if found is not None:
                 return found
 
@@ -375,6 +419,17 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
         found = _digest_bytes(decoded, trace, depth + 1, seen, max_depth)
         if found is not None:
             return found
+    if depth < max_depth:
+        try:
+            from ..plugins import unwrap as plugin_unwrap
+            plugin_blob, plugin_name = plugin_unwrap(data)
+        except Exception:                        # noqa: BLE001 - plugins are optional
+            plugin_blob, plugin_name = None, ""
+        if plugin_blob:
+            trace.append(f"plugin decoder {plugin_name} ({len(plugin_blob):,} B)")
+            found = _digest_bytes(plugin_blob, trace, depth + 1, seen, max_depth)
+            if found is not None:
+                return found
     return None
 
 def dig(raw: bytes, name: str = "input", max_depth: int = 8) -> Artifact:
@@ -398,6 +453,14 @@ def dig(raw: bytes, name: str = "input", max_depth: int = 8) -> Artifact:
                 return found
             text = program if program.endswith("\n") else program + "\n"
             return Artifact(text, "source", trace, _score(text, "source"))
+
+    if early is not None:
+        try:
+            from ..obfuscators import detect as _obf_detect
+            for match in _obf_detect(early)[:1]:
+                trace.append(f"obfuscator: {match['name']} ({match['why']})")
+        except Exception:                            # noqa: BLE001 - attribution is advisory
+            pass
 
     if early is not None and is_pyobfuscate(early):
         plain, facts = pyobfuscate_decrypt(early)
@@ -428,8 +491,65 @@ def dig(raw: bytes, name: str = "input", max_depth: int = 8) -> Artifact:
             if facts["strings"]:
                 trace.append("carved from payload: "
                              + ", ".join(facts["strings"][:6]))
+            from ..protectors import pyarmor as _armor
+            if armor["blob"]:
+                ctx = _armor.context()
+                unpacked = _armor.unpack(armor["blob"], runtime=ctx["runtime"],
+                                         key=ctx["key"])
+                if unpacked.recovered:
+                    header = _armor.parse_header(armor["blob"])
+                    trace.append(_armor.note(header))
+                    where = (f"· runtime {os.path.basename(ctx['runtime_path'])}"
+                             if ctx["runtime_path"] else "")
+                    trace.append("static unpack: " + unpacked.summary() + " " + where)
+                    from ..lift.module import lift_module
+                    parts = []
+                    for version, code in unpacked.codes:
+                        text = lift_module(code, version)
+                        if text:
+                            parts.append(text)
+                        strings = _armor.decrypt_strings(code.consts, unpacked.key,
+                                                         unpacked.nonce)
+                        if strings:
+                            trace.append("mixed strings recovered: "
+                                         + ", ".join(strings[:4]))
+                    if parts:
+                        text = "\n".join(parts)
+                        trace.append(f"{len(parts)} code object(s) lifted to source")
+                        found = Artifact(text, "source", trace,
+                                         _score(text, "source"))
+                        found.unchanged = False
+                        return found
+                else:
+                    trace.append(unpacked.note)
             text = early if early.endswith("\n") else early + "\n"
             return Artifact(text, "source", trace, _score(text, "source"))
+    # A freezer carries a whole program: read the container, then dig the best
+    # member.  Signatures first, so a plain zip is not mistaken for one.
+    try:
+        from ..containers import unpack as unpack_container
+        freezer, members = unpack_container(raw)
+    except Exception:                            # noqa: BLE001 - containers are optional
+        freezer, members = "", []
+    if members:
+        trace.append(f"{freezer} container: {len(members)} python member(s) inside")
+        best = None
+        chosen, chosen_trace = "", []
+        for member_name, payload in members[:40]:
+            scratch: list[str] = []
+            deeper = _digest_bytes(payload, scratch, 1, set(), max_depth)
+            if deeper is None or not deeper.is_source or deeper.stalled:
+                continue
+            if best is None or deeper.score > best.score:
+                best, chosen, chosen_trace = deeper, member_name, scratch
+        if best is not None:
+            trace.append(f"deepest member: {chosen}")
+            trace.extend(chosen_trace[:5])
+            best.trace = trace
+            best.unchanged = False
+            if best.is_source:
+                return best
+
     found = _digest_bytes(raw, trace, 0, set(), max_depth)
     if found is None:
         # Native containers (compiled extensions, one-file executables,

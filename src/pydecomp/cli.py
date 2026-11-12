@@ -86,6 +86,25 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pick", type=int, default=None, metavar="N",
                     help="when several files share a name, take the Nth newest "
                          "(default: the newest, and say so)")
+    ap.add_argument("--fetch-iocs", action="store_true",
+                    help="fetch the URLs the loader would have fetched and unpack "
+                         "the responses statically (opt-in network access)")
+    ap.add_argument("--mcp", action="store_true",
+                    help="start the MCP server on stdio instead of analysing a file")
+    ap.add_argument("--allow-write", action="store_true",
+                    help="let the MCP server write recovered files")
+    ap.add_argument("--pyarmor-runtime", default=None, metavar="PATH",
+                    help="pyarmor_runtime library to derive the key from "
+                         "(found beside the sample automatically)")
+    ap.add_argument("--pyarmor-key", default=None, metavar="HEX",
+                    help="runtime AES key, if you already have it")
+    ap.add_argument("--strict", action="store_true",
+                    help="write nothing unless every recovered unit is "
+                         "instruction-identical to the original (exits 3)")
+    ap.add_argument("--no-proof", action="store_true",
+                    help="do not write the .proof.json / .proof.md companions")
+    ap.add_argument("--annotate", action="store_true",
+                    help="carry the proof tier as a comment header in the output")
     ap.add_argument("--fast", action="store_true",
                     help="skip the expensive proofs (opaque-predicate solving); "
                          "identical output for clean files")
@@ -103,6 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.selftest:
         return selftest()
 
+    if args.mcp or args.file == "mcp":
+        from .mcp.server import serve
+        return serve(allow_write=args.allow_write)
+
     if args.file:
         if USE_COLOR:
             header(do_clear=False)
@@ -119,8 +142,16 @@ def main(argv: list[str] | None = None) -> int:
                                        diff=args.diff,
                                        verify=args.verify, dry_run=args.dry_run,
                                        neutralize=args.neutralize, fast=args.fast,
-                                       pick=args.pick)
-            return 0 if written else 1
+                                       pick=args.pick, strict=args.strict,
+                                       proof=not args.no_proof,
+                                       annotate=args.annotate,
+                                       pyarmor_runtime=args.pyarmor_runtime,
+                                       pyarmor_key=args.pyarmor_key,
+                                       fetch_iocs=args.fetch_iocs)
+            if written:
+                return 0
+            from .engine import run as _run
+            return _run.EXIT_CODE or 1
         path = deobfuscate(args.file, args.out, clean=not args.no_clean,
                            keep_artifacts=args.artifacts,
                            reports=args.reports,
@@ -128,7 +159,11 @@ def main(argv: list[str] | None = None) -> int:
                            diff=args.diff,
                            verify=args.verify, dry_run=args.dry_run,
                            neutralize=args.neutralize, fast=args.fast,
-                           pick=args.pick)
+                           pick=args.pick, strict=args.strict,
+                           proof=not args.no_proof, annotate=args.annotate,
+                           pyarmor_runtime=args.pyarmor_runtime,
+                           pyarmor_key=args.pyarmor_key,
+                           fetch_iocs=args.fetch_iocs)
         if path and args.verify:
             try:
                 try:
@@ -143,7 +178,10 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:                 # noqa: BLE001 - verification is optional
                 print("   " + paint(f"verification unavailable: "
                                     f"{type(exc).__name__}: {exc}", GREY))
-        return 0 if path else 1
+        if path:
+            return 0
+        from .engine import run as _run
+        return _run.EXIT_CODE or 1
 
     return interactive_loop(args.out)
 

@@ -46,6 +46,12 @@ nav:
       - CLI reference: cli.md
   - How it works:
       - The Almighty engine: almighty.md
+      - Proof-carrying output: proof.md
+      - PyArmor 8/9 static unpack: pyarmor.md
+      - Freezers: freezers.md
+      - Decompiler backends: backends.md
+      - Plugins: plugins.md
+      - MCP server (agents): mcp.md
       - Architecture: architecture.md
       - Layers and containers: layers.md
       - Bytecode engine: bytecode.md

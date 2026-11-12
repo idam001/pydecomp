@@ -3,15 +3,19 @@ requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pydecomp"
-description = "Static Python deobfuscator: recover readable source from packed, encoded or compiled Python without ever executing it."
+name = "pydecomp-tool"
+description = "Static deobfuscator + decompiler for packed Python — PyArmor 8/9, PyInstaller, Nuitka, marshal, .pyc 1.0-3.15, Base64/zlib/XOR chains. No execution. Every output carries a machine-checkable proof."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [
   { name = "Idam Emmanuel", email = "idamemmanuel@users.noreply.github.com" },
 ]
-keywords = ["deobfuscation", "reverse-engineering", "bytecode", "marshal", "malware-analysis", "static-analysis"]
+keywords = [
+  "python deobfuscator", "python decompiler", "pyc decompiler", "pyarmor unpacker",
+  "pyinstaller extractor", "nuitka decompiler", "marshal parser", "deobfuscation",
+  "reverse-engineering", "bytecode", "static-analysis",
+]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
@@ -29,6 +33,8 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Security",
   "Topic :: Software Development :: Disassemblers",
+  "Topic :: Utilities",
+  "Typing :: Typed",
 ]
 dependencies = []
 dynamic = ["version"]
@@ -37,6 +43,10 @@ dynamic = ["version"]
 # The native (Cython/ELF) front-end only needs Cython to rebuild the fixtures;
 # analysing a binary uses the bundled sidecar and nothing else.
 cython = ["cython>=3.0"]
+# Optional decompiler backends.  pydecomp grades their output against the
+# original instructions and only keeps a strictly better answer; if they are
+# not installed nothing changes, which is why they are optional.
+backends = ["depyo>=0.3"]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
@@ -60,6 +70,11 @@ Security = "https://github.com/idam001/pydecomp/blob/main/SECURITY.md"
 
 [project.scripts]
 pydecomp = "pydecomp.cli:main"
+
+# Plugin surface: a decoder ships as its own package and registers itself with
+#   [project.entry-points."pydecomp.decoders"]
+#   my_decoder = "my_pkg.decoder:my_decoder"
+# loaded at runtime by pydecomp.plugins.load_plugins().
 
 [project.gui-scripts]
 "pydecomp-gui" = "pydecomp.cli:main"

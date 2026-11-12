@@ -5,6 +5,94 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.0.0] - 2026-11-01
+
+### "It proves what it recovered"
+
+This release makes every output checkable, and closes the two gaps that made the
+old README honest-but-thin: PyArmor 8/9 detection without unpacking, and a single
+decompiler doing every interpreter version.
+
+**Proof-carrying artifacts (`pydecomp.proof`).** Every recovery writes
+`<name>.proof.json` and `<name>.proof.md` beside the source: the input digest, the
+layers that were peeled with the backend behind each, per-unit tiers, what was
+inferred with a confidence, what was lost, and the guarantee. The tiers are
+earned, not asserted — `semantic` means the recovered text recompiles to the same
+instruction stream as the original code object.
+
+- `--strict` writes nothing unless every unit is instruction-identical, and exits
+  `3` (distinct from `1` for a failure and `0` for success). The refusal says
+  what it saw: `strict: syntactic output (0 proven, 0 structural, 1 syntactic …)`.
+- `--annotate` puts the tier in the file as a comment; the default output stays a
+  single stamp line, because a file full of banners is not source.
+- Cleaning is now graded too: the tier is computed before and after polish, and a
+  pass that costs a tier is **rolled back** instead of shipped.
+- **Hole closed:** the instruction comparator ignored value-bearing operands
+  (`BINARY_OP`, `COMPARE_OP`, `IS_OP`, `CONTAINS_OP`, `BUILD_*`, `CALL`), so
+  `a + b` and `a * b` compared equal. They no longer do — the identity gate still
+  passes 47/47, now for the right reason.
+- The lifter records its module code object on `lift.module`; the reader looked at
+  `bytecode.codeobj` and always found `None`, which silently made every tier
+  `syntactic`. Fixed in `proof.tiers` and `bytecode.roundtrip` (`--verify` now
+  reports instead of shrugging).
+
+**PyArmor 8/9 static unpack (`pydecomp.protectors.pyarmor`).** The blob is
+`PY` + six digits, a packed header and AES-CTR ciphertext around a marshal
+stream. pydecomp parses the header with bounds checks, finds `pyarmor_runtime_*`
+beside the sample by itself, carries candidate keys out of the library, and
+accepts one **only when the plaintext parses as a marshal stream containing a code
+object**. The recovered code objects are lifted and proven: the fixture comes out
+`tier semantic`, 3/3 units instruction-identical. `--pyarmor-runtime` and
+`--pyarmor-key` override the hunt; mixed strings (`0x81` + ciphertext) decrypt
+with the same key. PyArmor 7 stays detect-only, and says why.
+
+**Freezers (`pydecomp.containers`).** PyInstaller CArchive with TOC parsing, PYZ
+extraction and rebuilt `.pyc` headers (2.0 and 2.1+ cookies), plus cx_Freeze,
+py2exe, PEX, shiv and briefcase readers. Each claims bytes by signature and hands
+members back to `dig`, so nesting still works. Fixed while doing it: a compressed
+CArchive member was sliced with the uncompressed length, which cut a PYZ into the
+next member.
+
+**Backends (`pydecomp.bytecode.backends`).** Version-routed decompilers with an
+orchestrator that grades every candidate against the original instructions and
+keeps the strongest tier, recording the choice in the proof. `pycdc-rs`, `pycdc`,
+`depyo`, `uncompyle6` and `decompyle3` are used when installed and skipped
+silently when not: 3.14/3.15 route to a real backend and never crash without it.
+
+**Interpreters.** `bytecode.magic.identify_implementation` names CPython, PyPy,
+MicroPython, Jython, IronPython and Brython by signature. PyPy lifts with the
+closest CPython table and is marked **approximate**; the others get structure and
+strings instead of invented code.
+
+**Obfuscators.** 21 named schemes with their contract (marker or shape) in
+`pydecomp.obfuscators`; a file that looks like a loader but matches nothing is
+called `unidentified loader` rather than given a name it has not earned.
+
+**Plugins** (`pydecomp.plugins`): `@register_decoder`, entry-point loading,
+failing plugins isolated, registry capped, and the engine falls back to them only
+after every built-in chain has failed.
+
+**MCP server** (`pydecomp.mcp`, `pydecomp --mcp`): `identify`, `peel`, `triage`,
+`decompile_pyc`, `deobfuscate` over JSON-RPC stdio, read-only unless
+`--allow-write`. It prepares the same protector context the CLI does, so an agent
+gets the unpacked program rather than the loader.
+
+**`--fetch-iocs`** (opt-in, off by default): fetch the URLs a loader would have
+fetched and unpack the responses statically. Fetching is not executing, and every
+retrieval is recorded in the trace and the proof.
+
+**Performance.** A 560 KB packed source went from **167 s to 3.4 s**: base62
+decoding was quadratic with a per-character `bytes.index`. It is now a lookup
+table plus a stated bound (32 KiB), and `tests/benchmarks/bench_core.py` holds the
+budgets (1 MB peel, per-module `.pyc`, AES-CTR over 1 MiB).
+
+**Packaging.** The distribution is `pydecomp-tool` (the PyPI name is taken by an
+unrelated project); the module and command stay `pydecomp`. Keywords and
+classifiers now name what the tool does, and `[backends]` is the optional extra.
+
+**Gates.** 21 → 26: `proof`, `pyarmor`, `freezers`, `agents`, `perf` added;
+249 unit tests, audit clean, single-file build still the shipping artifact.
+
 ## [Unreleased]
 
 ### It finds the file; it no longer hands you a command

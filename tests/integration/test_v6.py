@@ -205,8 +205,9 @@ def test_cli_roundtrip():
                           capture_output=True, text=True, timeout=300)
     eq(proc.returncode, 0)
     written = os.listdir(out)
-    eq(len(written), 1)
-    body = open(os.path.join(out, written[0])).read()
+    sources = [name for name in written if name.endswith(".py")]
+    eq(len(sources), 1, f"one source out: {written}")
+    body = open(os.path.join(out, sources[0])).read()
     ok(P.compile_problem(body) is None, body[:400])
 
 

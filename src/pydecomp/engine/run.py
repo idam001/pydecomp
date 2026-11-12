@@ -23,6 +23,9 @@ from ..triage.verify import _exec_dry_run
 
 STAMP_PREFIX = "#[ Deobfuscated by"
 
+#: set when a run refuses to write under --strict, so the CLI can exit 3
+EXIT_CODE = 0
+
 def _payload_intel(artifact) -> dict | None:
     """Fingerprints a sealed payload still shows: names, files, literals.
 
@@ -55,8 +58,14 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
                 reports: bool = True, verify: bool = False, yara: bool = False,
                 diff: bool = False,
                 dry_run: bool = False, neutralize: bool = False,
-                fast: bool = False, pick: int | None = None) -> str | None:
+                fast: bool = False, pick: int | None = None,
+                strict: bool = False, proof: bool = True,
+                annotate: bool = False, pyarmor_runtime: str | None = None,
+                pyarmor_key: str | None = None,
+                fetch_iocs: bool = False) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
+    global EXIT_CODE
+    EXIT_CODE = 0
     started = time.time()
     requested = str(src_path)
     # The tool does the looking.  If a file is visible anywhere the search
@@ -86,6 +95,20 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     with open(src_path, "rb") as fh:
         raw = fh.read()
     digest = hashlib.sha256(raw).hexdigest()
+
+    # Protector context: if a pyarmor_runtime library sits beside the sample,
+    # the engine uses it - the operator is never asked to go and find it.
+    from ..protectors import pyarmor as _armor
+    key_bytes = None
+    if pyarmor_key:
+        try:
+            key_bytes = bytes.fromhex(pyarmor_key.strip().lower().removeprefix("0x"))
+        except ValueError:
+            key_bytes = pyarmor_key.encode("utf-8")[:32] or None
+    _armor.set_context(src_path, pyarmor_runtime, key_bytes)
+    runtime_path = _armor.context().get("runtime_path")
+    if runtime_path and (pyarmor_runtime or b"pyarmor" in raw[:1 << 16].lower()):
+        emit(paint("runtime   " + runtime_path + "  (used for the runtime key)", CYAN))
 
     animate_text(f"Decompiling {name}", 0.45)
     spinner(f"identifying {raw_size:,} bytes", 0.5)
@@ -123,11 +146,39 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         if fidelity["kept"] == "unpacked":
             body = fidelity["text"]
             clean_notes = list(clean_notes) + [fidelity["reason"]]
+        # A cleaning pass is only kept when the result is still the recovered
+        # program *as code*, not merely as a diff.  Proven, not assumed.
+        from ..proof import tiers as _tiers
+        before_tier = _tiers.grade(_strip_pydecomp_preamble(artifact.text))
+        after_tier = _tiers.grade(body)
+        if _tiers.TIER_RANK[after_tier] > _tiers.TIER_RANK[before_tier]:
+            body = original_text
+            clean_notes = [note for note in clean_notes if "rename" not in note]
+            clean_notes.append(f"cleaning rolled back: {before_tier} -> {after_tier}")
         verdict_tint = {"cleaned": GREEN, "unverified": RED}.get(fidelity["kept"], YELLOW)
         emit(paint("fidelity   " + fidelity_summary(fidelity), verdict_tint))
     if neutralize:
         body, guard_notes = neutralize_source(body)
         clean_notes = list(clean_notes) + guard_notes
+
+    if fetch_iocs:
+        # Opt-in, and only when the loader left its payload on a URL.  Fetching
+        # is not executing: the bytes come back and are unpacked statically.
+        from .. import fetch as fetch_mod
+        from ..engine.dig import dig as _dig
+        results = fetch_mod.run(body)
+        emit(paint("fetch      " + fetch_mod.summary(results), CYAN))
+        for item in results:
+            trace.append("fetched " + item.line())
+            if not item.ok:
+                continue
+            deeper = _dig(item.body, "fetched-from-url")
+            if deeper.kind in ("source", "pseudo") and not deeper.stalled:
+                emit(paint("           " + item.url + " opened into "
+                           + f"{len(deeper.text):,} chars of source", GREEN))
+                body = deeper.text
+                trace.extend("fetched: " + line for line in deeper.trace[:4])
+                break
 
     report = analyse_recovered(body, trace, raw=raw)
     if artifact.stalled:
@@ -179,6 +230,31 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         for line in render_cov(name, coverage).splitlines()[2:12]:
             if line.strip():
                 emit(paint(line, GREY))
+    # ---- proof of what was recovered -------------------------------------
+    from ..lift.module import _last_module_version
+    from ..proof import build as build_proof, prefix_for, write as write_proof
+    from ..proof import failure as proof_failure
+    proof_obj = build_proof(
+        body, name=name, digest=digest, size=raw_size, kind=artifact.kind,
+        trace=trace, reports=report, notes=clean_notes,
+        version=_last_module_version, identity=left_alone)
+    if annotate:
+        mark = prefix_for(proof_obj)
+        if mark and not body.startswith(mark):
+            body = mark + body
+    if strict:
+        why = proof_failure(proof_obj)
+        if why:
+            emit(paint("✘ " + why, RED, BOLD))
+            for line in proof_obj.markdown().splitlines()[2:9]:
+                if line.strip():
+                    emit(paint("  " + line, GREY))
+            emit(paint("  nothing was written - this run did not prove the output", GREY))
+            EXIT_CODE = 3
+            return None
+    tier_tint = {"semantic": GREEN, "structural": CYAN}.get(proof_obj.worst, YELLOW)
+    emit(paint("proof      " + proof_obj.summary(), tier_tint))
+
     head = render_report(report, trace, name, raw_size, digest)
     text = "\n".join(head) + "\n\n" + body
 
@@ -217,6 +293,11 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     if reports:
         side = write_reports(path, report, trace, name, raw_size, digest, elapsed,
                              notes=clean_notes)
+    if proof:
+        proof_obj.output = {
+            "name": os.path.basename(path),
+            "bytes": len(text.encode("utf-8", "surrogateescape"))}
+        side = dict(side, **write_proof(proof_obj, path))
     if intel_path:
         side = dict(side, intel=intel_path) if side else {"intel": intel_path}
     if coverage is not None:
@@ -276,6 +357,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         rows.append(("payload", sealed_line, RED))
     if intel:
         rows.append(("intel", summary_intel(intel), CYAN))
+    rows.append(("proof", proof_obj.summary(), GREEN if proof_obj.worst == "semantic"
+                 else CYAN))
     if report["iocs"]:
         rows.append(("indicators", report.get("ioc_summary", "none found"), YELLOW))
     if report["risks"]:

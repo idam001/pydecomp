@@ -1,11 +1,10 @@
 """pydecomp - roundtrip."""
 from __future__ import annotations
 
-from ..bytecode.codeobj import CodeObj, _last_module_code, codeobj_from_host
+from ..bytecode.codeobj import CodeObj, codeobj_from_host
 from ..bytecode.decompiler6 import _operand_key
 from ..bytecode.disassembler import disassemble
 from ..bytecode.magic import host_version
-from ..lift.module import _last_module_version
 
 def _stream_pairs(code, version):
     """(offset, opcode, operand-key) for one code object, jumps excluded."""
@@ -47,12 +46,21 @@ def exact_match(code: CodeObj, text: str, version: tuple):
             first = f"#{index}: original {a} vs rebuilt {b}"
     return matched, max(len(left), len(right)), first
 
+def _recorded():
+    """Where the lifter actually records the module it rebuilt."""
+    from ..bytecode import codeobj as _codeobj
+    from ..lift import module as _lift
+    code = (getattr(_lift, "_last_module_code", None)
+            or getattr(_codeobj, "_last_module_code", None))
+    return code, getattr(_lift, "_last_module_version", None)
+
+
 def identity_report(text: str, version: tuple, limit: int = 6) -> list:
     """Per-function instruction identity of a whole-module reconstruction."""
-    global _last_module_code
-    if _last_module_version is not None:
-        version = _last_module_version
-    if _last_module_code is None:
+    module_code, module_version = _recorded()
+    if module_version is not None:
+        version = module_version
+    if module_code is None:
         return ["no module code object recorded yet"]
     host = host_version()[:2]
     if tuple(version[:2]) != tuple(host):
@@ -66,7 +74,7 @@ def identity_report(text: str, version: tuple, limit: int = 6) -> list:
     rebuilt = codeobj_from_host(compiled)
     lines = []
     total = matched = 0
-    for name, orig, mine in _paired_functions(_last_module_code, rebuilt):
+    for name, orig, mine in _paired_functions(module_code, rebuilt):
         left = _stream_pairs(orig, version)
         right = _stream_pairs(mine, version)
         same = 0

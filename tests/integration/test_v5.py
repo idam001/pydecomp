@@ -305,8 +305,13 @@ def _cli():
                           capture_output=True, text=True, timeout=120)
     eq(proc.returncode, 0, proc.stderr[-400:])
     files = os.listdir(out)
-    eq(len(files), 1, f"one output file: {files}")
-    ok(files[0].endswith(".py"), files[0])
+    sources = [name for name in files if name.endswith(".py")]
+    eq(len(sources), 1, f"one source out: {files}")
+    ok(sources[0].endswith("_deob.py"), sources[0])
+    # every output carries its proof; those are evidence files, not outputs
+    stem = sources[0][:-3]
+    ok(stem + ".proof.json" in files and stem + ".proof.md" in files,
+       f"proof companions missing: {files}")
 
 
 @check("the sample is never executed or imported")

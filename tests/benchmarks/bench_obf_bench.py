@@ -34,7 +34,7 @@ def run_case(folder: str) -> dict:
                            os.path.join(folder, target), "-o", out_dir,
                            "--no-color", "--no-anim"],
                           capture_output=True, text=True, timeout=600, env=env)
-    files = os.listdir(out_dir)
+    files = [name for name in os.listdir(out_dir) if name.endswith(".py")]
     text = open(os.path.join(out_dir, files[0])).read() if files else ""
     rebuilt = any("Deobfuscated by" in line for line in text.split("\n")[:3])
     result = {

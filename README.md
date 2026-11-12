@@ -1,8 +1,18 @@
 # pydecomp
 
-**Static Python deobfuscator — by [Idam Emmanuel](https://github.com/idam001).**
-Feed it a packed, encoded, mangled or partly-compiled Python file and get
-readable source back — without ever running the sample.
+**Python deobfuscator and decompiler.** Unpacks PyArmor 8/9, PyInstaller,
+Nuitka, cx_Freeze, py2exe, PEX, shiv, briefcase, Cython, marshal, `.pyc`
+1.0–3.15, and Base64/zlib/XOR/emoji chains — statically, on your machine.
+
+**Every output ships with a machine-checkable proof. pydecomp refuses to write
+source it cannot verify.**  By [Idam Emmanuel](https://github.com/idam001).
+
+```
+sample_deob.py          the recovered program
+sample_deob.proof.json  what was peeled, which backend decompiled it,
+                        which functions are instruction-identical, and what
+                        was inferred or lost
+```
 
 ```
 $ pydecomp suspicious.py
@@ -20,7 +30,8 @@ $ pydecomp suspicious.py
    ╰────────────────────────────────────────────────────────────────────╯
 ```
 
-One file in, one file out. No network, no telemetry, no `exec`.
+One source file out, with its proof beside it. No telemetry, no `exec`, and no
+network unless you ask for it (`--fetch-iocs`).
 
 Every recovered file carries exactly one line above the code, and nothing else:
 
@@ -29,6 +40,43 @@ Every recovered file carries exactly one line above the code, and nothing else:
 ```
 
 ---
+
+## What the proof says
+
+Every run grades the recovered program against the code it came from, unit by
+unit, and writes the result next to the output:
+
+| tier | meaning | written as |
+|---|---|---|
+| **semantic** | recompiles to the *same instruction stream* as the original | plain source |
+| **structural** | same control-flow shape and constant table, encoding differs | `--annotate` marks it |
+| **syntactic** | it compiles; equivalence not proven | `--annotate` marks it |
+| **unverified** | it does not compile; kept because dropping it loses code | `--annotate` marks it |
+
+```console
+$ pydecomp worker.py          # a real PyArmor 9 payload, runtime beside it
+   runtime   ~/case/pyarmor_runtime_000000/pyarmor_runtime.so  (used for the runtime key)
+   ▸ stage 5   PyArmor 8+ blob · serial 000000 · CPython 3.13 · AES-CTR across the code objects
+   ▸ stage 6   static unpack: 1 code object(s) recovered · key 11223344… verified by marshal structure
+   fidelity   output verified: still the recovered program
+   proof      proven 3/3 units (100%) · tier semantic
+```
+
+`--strict` writes **nothing** unless every unit is instruction-identical, and
+exits `3`. It is the only Python recovery tool that will refuse its own output.
+
+## What it handles
+
+| | |
+|---|---|
+| **Protectors** | PyArmor 8/9 **static unpack** (header parse → key hunt in `pyarmor_runtime` → AES-CTR → marshal → lift, key accepted only when the plaintext parses), PyArmor 7 detect-only, Hyperion, pyobfuscate.com |
+| **Freezers** | PyInstaller CArchive + PYZ (2.0 and 2.1+ cookies, stripped `.pyc` headers rebuilt), cx_Freeze, py2exe, PEX, shiv, briefcase |
+| **Bytecode** | CPython 3.8–3.15 by table, `.pyc` 1.0–3.15 sniffed, PyPy lifted with the closest table (marked *approximate*) |
+| **Interpreters** | CPython, PyPy, MicroPython `.mpy`, Jython, IronPython, Brython — named by signature, never guessed |
+| **Obfuscators** | 21 named schemes with their contract (marker or shape), then the generic peeler |
+| **Backends** | the bundled lifter, plus `pycdc-rs`, `pycdc`, `depyo`, `uncompyle6`, `decompyle3` when installed — chosen by proof tier, not by order |
+| **Agents** | MCP server (`pydecomp --mcp`): `identify`, `peel`, `triage`, `decompile_pyc`, `deobfuscate` |
+| **Plugins** | `pip install`able decoders via the `pydecomp.decoders` entry point |
 
 ## The board
 
@@ -120,6 +168,18 @@ You lose a little tidiness, never the recovered script.
 
 ## Install
 
+```console
+$ pip install pydecomp-tool      # the command is still `pydecomp`
+$ pip install "pydecomp-tool[backends]"   # + pycdc-rs / depyo if you have them
+```
+
+**Q: is this the `pydecomp` on PyPI?** No — that is an unrelated project. This
+repo installs as `pydecomp-tool` (or `pip install
+git+https://github.com/idam001/pydecomp.git`); the module and the command are
+`pydecomp`.
+
+## Install (from a checkout)
+
 > The PyPI name `pydecomp` is taken by an **unrelated** project, so
 > `pip install pydecomp` gives you the wrong tool. Install from Git:
 
@@ -197,7 +257,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-10 gates, 8.8 s, plus 90 unit tests:
+26 gates, plus 249 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -209,7 +269,12 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `test_identity` — instruction-identical round trips | 47/47 |
 | `test_probes` — obfuscator shapes | 37/37 |
 | `test_native` — Cython/ELF recovery | 41/41 |
+| `test_proof` — proof schema, `--strict` exit codes | all good |
+| `test_pyarmor` — PyArmor 8/9 static unpack, CLI | all good |
+| `test_freezers` — six freezers + PyInstaller PYZ | all good |
+| `test_agents` — MCP handshake/tools, plugins, cross-impl | all good |
 | `obf_bench` — hardest-obfuscation suite | 33/44 semantic · 11/11 rebuilt as source |
+| `bench_core` — peel/decompile/AES budgets | 3/3 budgets met |
 | `examples` — the six worked examples | 6/6 recovered |
 
 Real samples (byte-for-byte stable across releases):
@@ -234,6 +299,12 @@ pydecomp is not magic, and the report tells you where it stopped:
 - **`_PydecompUnknown`** — where a name cannot be bound, the sentinel appears in
   the output and in the runnability report. That is deliberate: a file that
   silently changes meaning is worse than a file that says "unknown here".
+- **PyArmor 7 and earlier** — the `PYARMOR` header predates the AES-CTR blob
+  layout entirely: the runtime encodes the payload with its own scheme, so what
+  exists in the file is the bootstrap and carved strings. 8/9 are unpacked.
+- **Cross-implementation lifts** — PyPy/MicroPython/Jython/IronPython bytes are
+  named by signature; a PyPy lift is marked *approximate* in the proof because
+  it is not instruction-verified against that interpreter.
 
 ## Configuration
 

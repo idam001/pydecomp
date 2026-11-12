@@ -2022,8 +2022,38 @@ FASTY = frozenset({"LOAD_FAST", "STORE_FAST", "DELETE_FAST", "LOAD_FAST_BORROW",
                    "LOAD_FAST_CHECK", "LOAD_FAST_AND_CLEAR", "LOAD_DEREF",
                    "STORE_DEREF", "LOAD_CLASSDEREF"})
 
+def _value_operand(code: CodeObj, op: str, arg: int) -> str:
+    """The part of an instruction's operand that decides what it does."""
+    if op == "BINARY_OP":
+        node = D6_BIN_OPS.get(arg)
+        return f"binop:{node.__name__ if node else '?' + str(arg)}"
+    if op == "COMPARE_OP":
+        index = arg >> 4 if arg > len(D6_CMP_OPS) else arg
+        node = D6_CMP_OPS[index] if 0 <= index < len(D6_CMP_OPS) else None
+        return f"cmp:{node.__name__ if node else '?%d' % arg}"
+    if op == "IS_OP":
+        return "is" if arg == 0 else "is not"
+    if op == "CONTAINS_OP":
+        return "in" if arg == 0 else "not in"
+    return f"{op}:{arg}"
+
+
+#: opcodes whose *operand* changes behaviour.  ``STRUCTURAL_ONLY`` ignores them
+#: because the lifter only needs shape, but an identity proof must not: without
+#: these, ``a + b`` and ``a * b`` are reported as the same instruction.
+VALUE_BEARING = frozenset({
+    "BINARY_OP", "COMPARE_OP", "IS_OP", "CONTAINS_OP", "FORMAT_VALUE",
+    "CONVERT_VALUE", "UNPACK_SEQUENCE", "UNPACK_EX", "BUILD_MAP", "BUILD_LIST",
+    "BUILD_TUPLE", "BUILD_SET", "BUILD_STRING", "BUILD_SLICE", "BUILD_CONST_KEY_MAP",
+    "CALL", "CALL_KW", "CALL_FUNCTION_EX", "RAISE_VARARGS", "LOAD_SMALL_INT",
+    "MAKE_FUNCTION", "COPY", "SWAP",
+})
+
+
 def _operand_key(code: CodeObj, op: str, arg: int) -> str:
     """Canonical, address-free description of what an instruction operates on."""
+    if op in VALUE_BEARING:
+        return _value_operand(code, op, arg)
     if op in STRUCTURAL_ONLY or "JUMP" in op:
         return ""
     try:
@@ -2043,6 +2073,29 @@ def _operand_key(code: CodeObj, op: str, arg: int) -> str:
         if op == "STORE_FAST_LOAD_FAST":
             return (f"store:{code.varnames[arg >> 4]},"
                     f"load:{code.varnames[arg & 15]}")
+        # Immediates that change what the instruction *does*: without these
+        # ``a + b`` and ``a * b`` compare equal, which would let a wrong
+        # reconstruction be reported as instruction-identical.
+        if op == "BINARY_OP":
+            return f"binop:{BINARY_SYMS.get(arg, '?' + str(arg))}"
+        if op == "COMPARE_OP":
+            return f"cmp:{_compare_symbol(arg, code)}"
+        if op == "IS_OP":
+            return "is" if arg == 0 else "is not"
+        if op == "CONTAINS_OP":
+            return "in" if arg == 0 else "not in"
+        if op in ("FORMAT_VALUE", "UNPACK_SEQUENCE", "UNPACK_EX", "BUILD_MAP",
+                  "BUILD_CONST_KEY_MAP", "BUILD_STRING", "BUILD_SLICE",
+                  "BUILD_LIST", "BUILD_TUPLE", "BUILD_SET", "RAISE_VARARGS",
+                  "CALL", "CALL_FUNCTION_EX", "CALL_INTRINSIC_1",
+                  "CALL_INTRINSIC_2", "COPY", "SWAP", "GEN_START", "MAKE_FUNCTION",
+                  "LOAD_SUPER_ATTR", "IMPORT_FROM", "LOAD_ATTR", "LOAD_GLOBAL",
+                  "LOAD_NAME", "STORE_NAME", "DELETE_NAME", "LOAD_SMALL_INT",
+                  "LOAD_LOCALS", "LOAD_ASSERTION_ERROR", "SET_ADD", "LIST_APPEND",
+                  "MAP_ADD", "SEND", "YIELD_VALUE", "RETURN_GENERATOR"):
+            return f"{op}:{arg}"
+        if arg:
+            return f"{op}:{arg}"
     except (IndexError, TypeError):
         return f"{op}:?"
     return ""

@@ -35,3 +35,52 @@ def parse_pyc(data: bytes):
 
 def host_version() -> tuple:
     return sys.version_info[:2]
+
+
+# --------------------------------------------------------------- interpreters
+#: Not every Python is CPython.  A signature table beats guessing from contents:
+#: each entry is the smallest thing that identifies the writer of these bytes.
+IMPLEMENTATIONS = {
+    "pypy": (b"\x0a\x0d\x0d\x0a", b"\x00\x0a\x0d\x0a"),
+    "micropython": (b"M\x00", b"M\x01", b"M\x02", b"M\x03", b"M\x04",
+                    b"M\x05", b"M\x06"),
+    "jython": (b"\xca\xfe\xba\xbe",),
+    "brython": (b"__BRYTHON__",),
+}
+
+#: what a lift from each one can honestly claim
+APPROXIMATION = {
+    "cpython": "",
+    "pypy": "lifted with the closest CPython table - approximate",
+    "micropython": "MicroPython .mpy: strings and structure only",
+    "jython": "Jython class file: strings and structure only",
+    "ironpython": "IronPython assembly: strings and structure only",
+    "brython": "Brython: Python that runs in a browser - read as source",
+}
+
+
+def identify_implementation(data: bytes) -> dict:
+    """``{implementation, version, confidence, note}`` for these bytes."""
+    info = {"implementation": "unknown", "version": None, "confidence": 0.0,
+            "note": ""}
+    if not data:
+        return info
+    magic = int.from_bytes(data[:2], "little") if len(data) >= 2 else -1
+    if len(data) >= 4 and data[2:4] == b"\r\n" and magic in MAGIC_VERSIONS:
+        info.update(implementation="cpython", version=MAGIC_VERSIONS[magic],
+                    confidence=1.0)
+        return info
+    for name, signatures in IMPLEMENTATIONS.items():
+        for signature in signatures:
+            if data[:len(signature)] == signature:
+                info.update(implementation=name, confidence=0.9)
+                info["note"] = APPROXIMATION.get(name, "")
+                return info
+    if data[:2] == b"MZ" and b"IronPython" in data[:1 << 20]:
+        info.update(implementation="ironpython", confidence=0.8,
+                    note=APPROXIMATION["ironpython"])
+        return info
+    if b"__BRYTHON__" in data[:8192]:
+        info.update(implementation="brython", confidence=0.7,
+                    note=APPROXIMATION["brython"])
+    return info

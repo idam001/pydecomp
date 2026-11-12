@@ -25,6 +25,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATES = ROOT / "tests" / "integration"
 BENCH = ROOT / "tests" / "benchmarks" / "bench_obf_bench.py"
+PERF = ROOT / "tests" / "benchmarks" / "bench_core.py"
 EXAMPLES = ROOT / "examples" / "run_examples.py"
 
 # name -> (path, extra environment, needs a bigger stack)
@@ -48,7 +49,12 @@ SUITE = {
     "identity": (GATES / "test_identity.py", {}, False),
     "probes": (GATES / "test_probes.py", {}, False),
     "native": (GATES / "test_native.py", {}, True),
+    "proof": (GATES / "test_proof.py", {}, False),
+    "pyarmor": (GATES / "test_pyarmor.py", {}, False),
+    "freezers": (GATES / "test_freezers.py", {}, False),
+    "agents": (GATES / "test_agents.py", {}, False),
     "bench": (BENCH, {}, False),
+    "perf": (PERF, {}, True),
     "examples": (EXAMPLES, {}, False),
 }
 

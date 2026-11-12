@@ -80,7 +80,7 @@
   {
     "case": "07_mba",
     "rc": 0,
-    "bytes": 223,
+    "bytes": 240,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
