@@ -143,7 +143,11 @@ def _encoding_vectors():
     eq(P.rc4(b"Key", b"Plaintext").hex(), "bbf316e8d940af0ad3", "rc4")
     eq(P.b58decode(b"16UjcYNBG9GTK4uq2f7yYEbuifqCzoLMGS").hex(),
        "003c176e659bea0f29a3e9bf7880c112b1b31b4dc826268187", "base58")
-    eq(P.b45decode(b"BB8"), b"BA", "base45")
+    # RFC 9285 Appendix B: "AB" encodes to "BB8"; the high byte comes first.
+    # This check used to assert b"BA" - it was pinning the byte-swapped bug.
+    eq(P.b45decode(b"BB8"), b"AB", "base45")
+    eq(P.b45decode(b"%69 VD92EX0"), b"Hello!!", "base45")
+    eq(P.b45decode(b"UJCLQE7W581"), b"base-45", "base45")
 
 
 @check("repeating-XOR keys are recovered, including awkward ones")

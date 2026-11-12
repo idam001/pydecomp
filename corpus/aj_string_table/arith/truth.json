@@ -1,0 +1,11 @@
+{
+ "expect": "recover",
+ "family": "aj_string_table",
+ "layers": [
+  "base64",
+  "xor(key=0x2b)"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "table"
+}

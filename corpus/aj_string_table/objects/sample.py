@@ -1,0 +1,5 @@
+import base64, codecs, zlib, lzma, gzip, bz2, marshal
+_p = b'SEdKWFgLeE5YWEJERREhCwsLC09OTQt0dEJFQl90dANYTkdNBwtDRFhfBwtbRFlfFh8fGAIRIQsLCwsLCwsLWE5HTQVDRFhfCxYLQ0RYXyELCwsLCwsLC1hOR00FW0RZXwsWC1tEWV8hIQsLCwtPTk0LXllHA1hOR00CESELCwsLCwsLC1lOX15ZRQtNDENfX1tYEQQEUFhOR00FQ0RYX1YRUFhOR00FW0RZX1YEDCEhT05NSl5HXwsWC3hOWFhCREUDDE5TSkZbR04FSERGDAIh'
+_data = base64.b64decode(_p)
+_text = bytes(b ^ 0x2B for b in _data).decode('utf-8')
+exec(_text)

@@ -110,6 +110,84 @@ OPS = {
                 "bytes({x}, 'utf-8').decode('unicode_escape').encode('latin-1')"),
 }
 
+
+# --- codecs with their own alphabets ---------------------------------------
+B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+B45 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
+Z85 = ("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+       ".-:+=^!/*?&<>()[]{}@%$#")
+
+
+def _base_n_encode(data: bytes, alphabet: str) -> bytes:
+    number = int.from_bytes(data, "big")
+    out = []
+    while number:
+        number, rest = divmod(number, len(alphabet))
+        out.append(alphabet[rest])
+    return ("".join(reversed(out)) or alphabet[0]).encode()
+
+
+def _base_n_decode(data: bytes, alphabet: str) -> bytes:
+    number = 0
+    for symbol in data.decode().strip():
+        number = number * len(alphabet) + alphabet.index(symbol)
+    return number.to_bytes(max(1, (number.bit_length() + 7) // 8), "big")
+
+
+def _b58(data: bytes) -> bytes:
+    return _base_n_encode(data, B58)
+
+
+def _b62(data: bytes) -> bytes:
+    return _base_n_encode(data, B62)
+
+
+def _b45(data: bytes) -> bytes:
+    out = []
+    for index in range(0, len(data) - 1, 2):
+        value = data[index] * 256 + data[index + 1]
+        out.append(B45[value % 45])
+        out.append(B45[(value // 45) % 45])
+        out.append(B45[value // 2025])
+    if len(data) % 2:
+        value = data[-1]
+        out.append(B45[value % 45])
+        out.append(B45[value // 45])
+    return "".join(out).encode()
+
+
+def _uu(data: bytes) -> bytes:
+    """uuencode in 45-byte blocks, the way uuencode always did it."""
+    out = []
+    for index in range(0, len(data), 45):
+        out.append(__import__("binascii").b2a_uu(data[index:index + 45],
+                                                 backtick=False).strip())
+    return b"\n".join(out)
+
+
+def _z85(data: bytes) -> bytes:
+    # Z85 works in 4-byte groups; the payload is padded and the loader slices the
+    # padding off again, which is what real z85 loaders do
+    while len(data) % 4:
+        data += b"\x00"
+    out = []
+    for index in range(0, len(data), 4):
+        value = int.from_bytes(data[index:index + 4], "big")
+        chunk = []
+        for _ in range(5):
+            value, rest = divmod(value, 85)
+            chunk.append(Z85[rest])
+        out.extend(reversed(chunk))
+    return "".join(out).encode()
+
+
+OPS["base58"] = (_b58, lambda b: _base_n_decode(b, B58), "B58_({x})")
+OPS["base62"] = (_b62, lambda b: _base_n_decode(b, B62), "B62_({x})")
+OPS["base45"] = (_b45, None, "B45_({x})")
+OPS["z85"] = (_z85, None, "Z85_({x})")
+OPS["uu"] = (_uu, None, "UU_({x})")
+
 # --- families ---------------------------------------------------------------
 # layers are written outermost first, exactly as the loader expression nests
 # them: ("zlib", "b64") -> exec(zlib.decompress(base64.b64decode(_p)))
@@ -145,7 +223,17 @@ FAMILIES: dict[str, dict] = {
     "w_bare_marshal": {"layers": (), "tail": "marshal", "payload": "marshal"},
     "x_marshal_zlib": {"layers": ("zlib", "b64"), "tail": "marshal", "payload": "marshal"},
     "y_pyc_zlib_b64": {"layers": ("zlib", "b64"), "tail": "pychead", "payload": "pyc"},
-    "z_refuse":     {"layers": ("b64",), "tail": "refuse"},
+    "z_refuse":     {"layers": ("b64",), "tail": "refuse"},    "aa_base58":    {"layers": ("base58",), "tail": "alphabet", "alphabet": "B58"},
+    "ab_base62":    {"layers": ("base62",), "tail": "alphabet", "alphabet": "B62"},
+    "ac_base45":    {"layers": ("base45",), "tail": "alphabet", "alphabet": "B45"},
+    "ad_z85":       {"layers": ("z85",), "tail": "alphabet", "alphabet": "Z85"},
+    "ae_uu":        {"layers": ("uu",), "tail": "alphabet", "alphabet": "UU"},
+    "af_hex_upper": {"layers": ("hex",)},
+    "ag_double_zip": {"layers": ("b64",), "tail": "zip2"},
+    "ah_eval_chain": {"layers": ("b64",), "tail": "eval"},
+    "ai_stacked_mixed": {"layers": ("b64", "zlib", "b64", "xor5a")},
+    "aj_string_table": {"layers": (), "tail": "table"},
+
 }
 
 HEADER = "import base64, codecs, zlib, lzma, gzip, bz2, marshal\n_p = {blob}\n"
@@ -181,6 +269,54 @@ def loader_for(cooked: bytes, layers: tuple[str, ...], tail: str) -> str:
         expression = OPS[name][2].format(x=expression)
     if tail == "exec":
         body = f"exec({expression})\n"
+    elif tail == "eval":
+        # eval(compile(...)): the payload is handed to a compiler, not to exec
+        body = f"_code = compile({expression}, '<payload>', 'exec')\n"
+    elif tail == "table":
+        body = ("_data = base64.b64decode(_p)\n"
+                "_text = bytes(b ^ 0x2B for b in _data).decode('utf-8')\n"
+                "exec(_text)\n")
+    elif tail == "alphabet":
+        codec = spec["alphabet"]
+        cooked, truth_layers = cook(raw, layers)
+        if codec == "UU":
+            loader = (HEADER.format(blob=repr(cooked))
+                      + "import binascii\n"
+                        "exec(binascii.a2b_uu(_p).decode())\n")
+        else:
+            alphabet = {"B58": B58, "B62": B62, "B45": B45, "Z85": Z85}[codec]
+            if codec == "Z85":
+                loader = (HEADER.format(blob=repr(cooked))
+                          + f"_A = {alphabet!r}\n"
+                            "_o = bytearray()\n"
+                            "for _i in range(0, len(_p), 5):\n"
+                            "    _v = 0\n"
+                            "    for _c in _p[_i:_i + 5]:\n"
+                            "        _v = _v * 85 + _A.index(chr(_c))\n"
+                            "    _o.extend(_v.to_bytes(4, 'big'))\n"
+                            "exec(bytes(_o).rstrip(b'\\x00').decode())\n")
+                truth_layers = list(truth_layers)
+                with open(os.path.join(folder, "sample.py"), "w", encoding="utf-8") as handle:
+                    handle.write(loader)
+                with open(os.path.join(folder, "payload.py"), "w", encoding="utf-8") as handle:
+                    handle.write(source)
+                truth = {"family": name, "payload": payload_name,
+                         "payload_sha256": hashlib.sha256(raw).hexdigest(),
+                         "tail": tail, "layers": truth_layers, "expect": "recover"}
+                with open(os.path.join(folder, "truth.json"), "w", encoding="utf-8") as handle:
+                    json.dump(truth, handle, indent=1, sort_keys=True)
+                    handle.write("\n")
+                return truth
+            loader = (HEADER.format(blob=repr(cooked))
+                      + f"_A = {alphabet!r}\n"
+                        "_n = 0\n"
+                        "for _c in _p.decode():\n"
+                        "    _n = _n * len(_A) + _A.index(_c)\n"
+                        "exec(_n.to_bytes((_n.bit_length() + 7) // 8, 'big')"
+                        ".decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "zip2":
+        body = f"_inner = {expression}\n"
     elif tail == "marshal":
         body = f"_code = marshal.loads({expression})\n"
     elif tail == "pychead":
@@ -202,6 +338,72 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
         loader = "_p = ''.join(chr(n) for n in [" + numbers + "])\nexec(_p)\n"
         cooked = b""
         truth_layers = ["chr-array"]
+    elif tail == "alphabet":
+        codec = spec["alphabet"]
+        cooked, truth_layers = cook(raw, layers)
+        if codec == "UU":
+            loader = (HEADER.format(blob=repr(cooked))
+                      + "import binascii\n"
+                        "exec(binascii.a2b_uu(_p).decode())\n")
+        else:
+            alphabet = {"B58": B58, "B62": B62, "B45": B45, "Z85": Z85}[codec]
+            if codec == "Z85":
+                loader = (HEADER.format(blob=repr(cooked))
+                          + f"_A = {alphabet!r}\n"
+                            "_o = bytearray()\n"
+                            "for _i in range(0, len(_p), 5):\n"
+                            "    _v = 0\n"
+                            "    for _c in _p[_i:_i + 5]:\n"
+                            "        _v = _v * 85 + _A.index(chr(_c))\n"
+                            "    _o.extend(_v.to_bytes(4, 'big'))\n"
+                            "exec(bytes(_o).rstrip(b'\\x00').decode())\n")
+                truth_layers = list(truth_layers)
+                with open(os.path.join(folder, "sample.py"), "w", encoding="utf-8") as handle:
+                    handle.write(loader)
+                with open(os.path.join(folder, "payload.py"), "w", encoding="utf-8") as handle:
+                    handle.write(source)
+                truth = {"family": name, "payload": payload_name,
+                         "payload_sha256": hashlib.sha256(raw).hexdigest(),
+                         "tail": tail, "layers": truth_layers, "expect": "recover"}
+                with open(os.path.join(folder, "truth.json"), "w", encoding="utf-8") as handle:
+                    json.dump(truth, handle, indent=1, sort_keys=True)
+                    handle.write("\n")
+                return truth
+            loader = (HEADER.format(blob=repr(cooked))
+                      + f"_A = {alphabet!r}\n"
+                        "_n = 0\n"
+                        "for _c in _p.decode():\n"
+                        "    _n = _n * len(_A) + _A.index(_c)\n"
+                        "exec(_n.to_bytes((_n.bit_length() + 7) // 8, 'big')"
+                        ".decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "zip2":
+        inner = os.path.join(folder, ".inner.zip")
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("payload.py", source)
+        with open(inner, "rb") as handle:
+            packed = handle.read()
+        os.unlink(inner)
+        outer = os.path.join(folder, ".outer.zip")
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("inner.zip", packed)
+        with open(outer, "rb") as handle:
+            packed = handle.read()
+        os.unlink(outer)
+        cooked, truth_layers = cook(packed, layers)
+        loader = loader_for(cooked, layers, "exec")
+        truth_layers = truth_layers + ["zip", "zip"]
+    elif tail == "table":
+        # the payload is encrypted, and the key is written in the loader
+        cooked = base64.b64encode(bytes(b ^ 0x2B for b in raw))
+        truth_layers = ["base64", "xor(key=0x2b)"]
+        loader = (HEADER.format(blob=repr(cooked))
+                  + "_data = base64.b64decode(_p)\n"
+                    "_text = bytes(b ^ 0x2B for b in _data).decode('utf-8')\n"
+                    "exec(_text)\n")
+    elif tail == "eval":
+        cooked, truth_layers = cook(raw, layers)
+        loader = loader_for(cooked, layers, "eval")
     elif tail == "zip":
         buffer = os.path.join(folder, ".payload.zip")
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:

@@ -1,12 +1,12 @@
 """pydecomp - z85."""
 from __future__ import annotations
 
-from ..decoders.hex_loose import _strip_separators
-
 def _base85_z85(data: bytes) -> bytes:
     table = (b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
              b".-:+=^!/*?&<>()[]{}@%$#")
-    text = _strip_separators(data)
+    # Z85's alphabet *includes* '.', '-', ':', '+' and '=', so a separator strip
+    # would eat the encoding.  Only whitespace is noise here.
+    text = bytes(ch for ch in data if ch not in b" \t\r\n")
     if not text or any(ch not in table for ch in text):
         raise ValueError("not z85")
     if len(text) % 5:

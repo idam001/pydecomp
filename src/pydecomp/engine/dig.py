@@ -311,6 +311,21 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 names = [n for n in archive.namelist()
                          if n.endswith((".pyc", ".py", ".pyz", ".pyd"))]
+                if not names:
+                    # an archive holding archives: a packer that wraps twice.
+                    # Recurse into the members themselves rather than declaring
+                    # the container empty.
+                    nested = [n for n in archive.namelist()
+                              if not n.endswith("/") and archive.getinfo(n).file_size]
+                    nested.sort(key=lambda name: -archive.getinfo(name).file_size)
+                    trace.append(f"zip container · 0 python members, "
+                                 f"{len(nested)} member(s) to open")
+                    for name in nested[:6]:
+                        inner = _digest_bytes(archive.read(name), trace, depth + 1,
+                                              seen, max_depth)
+                        if inner is not None:
+                            return inner
+                    return None
                 trace.append(f"zip container · {len(names)} python member(s)")
                 best = None
                 for name in names[:12]:

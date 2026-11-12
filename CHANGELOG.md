@@ -131,6 +131,37 @@ sealed blob count and the CJK filler it discarded.  The DONE panel gained an
 
 ## [1.0.0] — 2026-11-01 — “the Almighty”
 
+### Ten more families, and the bugs they found
+
+The corpus went from 26 families to **36** (144 cases) and the new families paid
+for themselves immediately:
+
+- **`aa_base58` `ab_base62` `ac_base45` `ad_z85` `ae_uu`** - hand-rolled codecs
+  with no stdlib. A loader that spells out an alphabet cannot be followed by
+  evaluating an expression, so `peel` now recognises the alphabet itself: a module
+  carrying the base58/base62/base45/z85 table and one big literal is holding that
+  codec's output, and `binascii.a2b_uu` is named directly.
+- **base45 was wrong.** RFC 9285 puts the high byte of a triple first; the
+  decoder took it second, so payloads came out byte-swapped and `8U-R3` raised
+  instead of returning `Hello!!`. Fixed, with the four RFC vectors as tests - and
+  `test_v8` had been *asserting the bug* (`b"BA"`), which is how it survived.
+- **z85 was wrong.** Its input went through the separator stripper, but Z85's
+  alphabet contains `.`, `-`, `:`, `+`, `=` - the strip ate the encoding. Fixed
+  against the reference vector (`nm=QNz.92Pz/PV8` → `Hello, world`).
+- **`ag_double_zip`** - an archive holding an archive: the container reader only
+  looked for `.py`/`.pyc` members and declared the zip empty. It now recurses
+  into members when nothing Python is on the surface.
+- **`aj_string_table`** - `bytes(b ^ K for b in blob)` with the key in the loader.
+  This is the most common shape in current string-encryption loaders and the
+  statement evaluator will not run a comprehension; the peeler now folds that one
+  pattern directly, using the key the file itself names - no key guessing.
+- **`ah_eval_chain`, `ai_stacked_mixed`, `af_hex_upper`** - `compile()` sinks and
+  four-layer stacks, recovered without changes to the engine.
+
+Corpus: **144/144 recovered**, mean token recall 97.6%, 0.63 s. Retrained ranking
+on the bigger corpus: held-out payload **28.6% → 85.7%** top-1, decodes before
+the right one **8.79 → 1.43**.
+
 ### The corpus, and a ranking trained on it
 
 A claim that lives only in prose cannot be checked, so the project now ships the

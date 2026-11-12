@@ -1,5 +1,5 @@
 {
- "cases": 104,
+ "cases": 144,
  "families": {
   "a_b64": [
    {
@@ -27,6 +27,330 @@
     "expect": "recover",
     "layers": [
      "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "aa_base58": [
+   {
+    "expect": "recover",
+    "layers": [
+     "base58"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base58"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base58"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base58"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ab_base62": [
+   {
+    "expect": "recover",
+    "layers": [
+     "base62"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base62"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base62"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base62"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ac_base45": [
+   {
+    "expect": "recover",
+    "layers": [
+     "base45"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base45"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base45"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base45"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ad_z85": [
+   {
+    "expect": "recover",
+    "layers": [
+     "z85"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "z85"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "z85"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "z85"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ae_uu": [
+   {
+    "expect": "recover",
+    "layers": [
+     "uu"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "uu"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "uu"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "uu"
+    ],
+    "payload": "text"
+   }
+  ],
+  "af_hex_upper": [
+   {
+    "expect": "recover",
+    "layers": [
+     "hex"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "hex"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "hex"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "hex"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ag_double_zip": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip",
+     "zip"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip",
+     "zip"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip",
+     "zip"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip",
+     "zip"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ah_eval_chain": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ai_stacked_mixed": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zlib",
+     "b64",
+     "xor5a"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zlib",
+     "b64",
+     "xor5a"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zlib",
+     "b64",
+     "xor5a"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zlib",
+     "b64",
+     "xor5a"
+    ],
+    "payload": "text"
+   }
+  ],
+  "aj_string_table": [
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "xor(key=0x2b)"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "xor(key=0x2b)"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "xor(key=0x2b)"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "xor(key=0x2b)"
     ],
     "payload": "text"
    }

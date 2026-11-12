@@ -1,0 +1,12 @@
+{
+ "expect": "recover",
+ "family": "ag_double_zip",
+ "layers": [
+  "b64",
+  "zip",
+  "zip"
+ ],
+ "payload": "text",
+ "payload_sha256": "32710e54b94f27a378de6e244529da84f583da6a0f87adb057da59ddaafa40cd",
+ "tail": "zip2"
+}

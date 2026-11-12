@@ -68,9 +68,164 @@ def find_payloads(source: str) -> list[Payload]:
             continue
 
     found.extend(_marshal_payloads(tree, ev))
+    found.extend(_alphabet_payloads(tree))
+    found.extend(_xor_comprehension_payloads(tree, ev))
+    found.extend(_builtin_uu_payloads(tree))
 
     # prefer the biggest payload (that is nearly always the real one)
     found.sort(key=lambda pl: len(pl.data), reverse=True)
+    return found
+
+
+# Alphabets a loader has to spell out because there is no stdlib codec for
+# them.  When a module carries one of these tables and a literal blob, the blob
+# is that codec's output - no guessing, no execution, just naming the alphabet.
+ALPHABETS = {
+    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz": "base58",
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz": "base62",
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:": "base45",
+    ("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+     ".-:+=^!/*?&<>()[]{}@%$#"): "z85",
+}
+
+
+def _literal_blobs(tree: ast.AST, floor: int = 24) -> list[tuple[bytes, ast.AST]]:
+    """Every byte/str literal in the module, biggest first."""
+    blobs: list[tuple[bytes, ast.AST]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (bytes, str)):
+            data = (node.value if isinstance(node.value, bytes)
+                    else node.value.encode("utf-8", "surrogateescape"))
+            if len(data) >= floor:
+                blobs.append((data, node))
+    blobs.sort(key=lambda item: len(item[0]), reverse=True)
+    return blobs
+
+
+def _alphabet_payloads(tree: ast.AST) -> list[Payload]:
+    """A declared alphabet plus a literal blob: that blob is the codec's output.
+
+    Hand-rolled base58/62/45/z85 loaders cannot be evaluated by following an
+    expression tree - they loop.  What they *can* be recognised by is the table
+    they carry: a module that spells out the base58 alphabet and holds one big
+    literal is holding base58.  The registry does the arithmetic, statically.
+    """
+    declared = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            codec = ALPHABETS.get(node.value)
+            if codec is not None and codec not in declared:
+                declared.append(codec)
+    if not declared:
+        return []
+    from ..decoders.registry import TRANSFORMS
+    from ..decoders.emoji import parses_as_python
+    found: list[Payload] = []
+    for codec in declared:
+        decode = TRANSFORMS.get(codec)
+        if decode is None:
+            continue
+        for blob, _node in _literal_blobs(tree, floor=32):
+            if set(blob) - set(b"\n\r \t") <= set(b"") :
+                continue
+            try:
+                out = decode(blob)
+            except Exception:                        # noqa: BLE001 - wrong alphabet for this blob
+                continue
+            if not out:
+                continue
+            try:
+                text = out.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            if parses_as_python(text):
+                found.append(Payload([codec], out, "python"))
+                break
+            if out[:2] in MAGIC_VERSIONS_BYTES:
+                found.append(Payload([codec], out, "marshal"))
+                break
+    return found
+
+
+def _xor_comprehension_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
+    """``bytes(b ^ K for b in blob)`` - a decrypt loop written as a comprehension.
+
+    This is the most common shape in current string-encryption loaders: the blob
+    is a literal, the key is a literal, and the only thing between the reader and
+    the payload is a generator expression the statement evaluator will not run.
+    The arithmetic is three lines, so do it directly - nothing is executed, no
+    candidate key is tried that the file did not name.
+    """
+    found: list[Payload] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Name) and func.id == "bytes"):
+            continue
+        argument = node.args[0]
+        if not isinstance(argument, (ast.GeneratorExp, ast.ListComp)):
+            continue
+        if len(argument.generators) != 1:
+            continue
+        element = argument.elt
+        if not (isinstance(element, ast.BinOp) and isinstance(element.op, ast.BitXor)):
+            continue
+        sides = (element.left, element.right)
+        key = None
+        for side in sides:
+            if isinstance(side, ast.Constant) and isinstance(side.value, int):
+                key = side.value & 0xFF
+        if key is None:
+            continue
+        source = None
+        iterated = argument.generators[0].iter
+        try:
+            value = ev.eval(iterated)
+        except Exception:                            # noqa: BLE001 - not static
+            value = None
+        if value is not None and isinstance(value.value, (bytes, bytearray)) \
+                and value.value:
+            source = bytes(value.value)
+        if not source:
+            continue
+        plain = bytes(item ^ key for item in source)
+        try:
+            text = plain.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if looks_like_python(text):
+            found.append(Payload([f"xor(key={key:#04x})"], plain, "python"))
+        elif plain[:2] in MAGIC_VERSIONS_BYTES:
+            found.append(Payload([f"xor(key={key:#04x})"], plain, "marshal"))
+    return found
+
+
+def _builtin_uu_payloads(tree: ast.AST) -> list[Payload]:
+    """``binascii.a2b_uu(literal)`` - the stdlib uudecode, spelled out."""
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == "a2b_uu":
+            names.add("uu")
+        if isinstance(node, ast.Name) and node.id == "a2b_uu":
+            names.add("uu")
+    if not names:
+        return []
+    import binascii
+    from ..decoders.emoji import parses_as_python
+    found: list[Payload] = []
+    for blob, _node in _literal_blobs(tree, floor=32):
+        try:
+            out = b"".join(binascii.a2b_uu(line) for line in blob.splitlines() if line)
+        except Exception:                            # noqa: BLE001
+            continue
+        try:
+            text = out.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if parses_as_python(text):
+            found.append(Payload(["uu"], out, "python"))
+            break
     return found
 
 
