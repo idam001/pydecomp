@@ -198,10 +198,34 @@ def exact_matches(path: str) -> list[str]:
     return [full for full in _files() if os.path.basename(full) == wanted]
 
 
+def _canonical_case(path: str) -> str | None:
+    """The spelling the filesystem actually stores for this name.
+
+    macOS and Windows ignore case, so a typed ``sample.PY`` opens ``Sample.py``.
+    Handing back the stored spelling means the panel, the output name and the
+    proof all agree with what is on disk instead of echoing the typo.
+    """
+    folder, name = os.path.split(os.path.abspath(path))
+    try:
+        entries = os.listdir(folder)
+    except OSError:
+        return None
+    if name in entries:
+        return os.path.join(folder, name)
+    folded = name.casefold()
+    for entry in entries:
+        if entry.casefold() == folded:
+            return os.path.join(folder, entry)
+    return None
+
+
 def search(path: str, pick: int | None = None) -> Choice | None:
     """Find the file the operator meant and say why that one was chosen."""
     given = expand(path)
     if os.path.isfile(given):
+        real = _canonical_case(given)
+        if real is not None and real != os.path.abspath(given):
+            return Choice(real, "path as given, ignoring case", (), "given")
         return Choice(os.path.abspath(given), "path as given", (), "given")
     if os.path.isdir(given):
         return None                                  # a folder: the tree mode handles it

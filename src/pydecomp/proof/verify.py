@@ -144,9 +144,12 @@ def verify(proof_path: str) -> dict:
 
 
 def summary(result: dict) -> str:
+    """One line: how many checks held, and what that means."""
+    if not result["checks"]:
+        # nothing could be read at all: the message already said so once
+        return "no checks ran · fix the file the proof names, then ask again"
     good = sum(1 for item in result["checks"] if item["ok"])
-    return (f"{good}/{len(result['checks'])} checks passed · {result['message']}"
-            if result["checks"] else result["message"])
+    return f"{good}/{len(result['checks'])} checks passed · {result['message']}"
 
 
 def render(result: dict) -> str:

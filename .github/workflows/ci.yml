@@ -37,6 +37,24 @@ jobs:
           python -m pip install pytest pyyaml
       - name: unit tests
         run: PYTHONPATH=src python -m pytest tests/unit -q
+      - name: this interpreter can still run the analyser
+        # the version-neutral path: identify, peel the text layers, write a
+        # proof, verify that proof.  Nothing here depends on a compiled .pyc,
+        # so it is the claim that 3.9-3.13 all have to keep.
+        run: |
+          PYTHONPATH=src python -m pydecomp --version
+          work="$(mktemp -d)"
+          python - "$work" <<'PY'
+          import base64, pathlib, sys
+          payload = b"def add(a, b):\n    return a + b\n"
+          blob = base64.b64encode(base64.b64encode(payload)).decode()
+          pathlib.Path(sys.argv[1], "layered.py").write_text(
+              f"import base64\nexec(base64.b64decode({blob!r}))\n", encoding="utf-8")
+          PY
+          PYTHONPATH=src python -m pydecomp "$work/layered.py" -o "$work/out" --no-color --no-anim
+          proof="$(ls "$work"/out/*.proof.json | head -1)"
+          test -n "$proof"
+          PYTHONPATH=src python -m pydecomp --check-proof "$proof"
       - name: audit (nothing executes a sample)
         run: python tools/check_static_only.py
       - name: single-file build is current
