@@ -70,12 +70,27 @@ see P0-1.
    `tests/unit/test_propagate_order.py` pinning the ordering and the parameter
    case.
 
-2. **Coverage should fail loudly, not just report.**
+2. ~~**Coverage should fail loudly, not just report.**~~
+   **Done** — `triage/coverage.py`, gate `coverage` (`33 checks passed`).
+
    `--diff` printed `verdict: complete` for the broken `report()` above: the
-   definition survived, so the check said complete. Add a *suspicion* signal —
-   a function whose statement count falls by more than half, or whose returned
-   names disappear — surfaced as `suspicious` rather than `kept`. Then wire it
-   into the gate suite for the fixtures.
+   definition survived, so the check said complete. Coverage now checks whether a
+   surviving definition still *looks like itself*, and reports the verdict
+   `suspicious` instead of `complete` with the name and the reason:
+
+   * **mutates a literal** — `[].append(...)`, `{}.update(...)`. This is the
+     fingerprint of substituting a binding that was never valid, and no program
+     writes it on purpose.
+   * **body more than halved** — folding does this legitimately, so it is
+     reported as something to look at rather than as a proven fault.
+
+   The first draft of this signal used "returns only literals now", which fired
+   on the project's own most common transformation (a decoder inlined into its
+   literal — `return _d("aHR0…")` → `return 'http://example.invalid'`) and made
+   1 of 5 definitions in the coverage gate suspicious. That is why the rule is
+   the literal receiver instead: on **200 corpus payloads the signal fires zero
+   times**, and the gate asserts both halves — it catches the bug and it stays
+   quiet on healthy output.
 
 3. **Opaque-predicate prover: prove only what can be proved.**
    Sampling is currently over integers; `_numeric_only` blocks the obvious

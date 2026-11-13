@@ -13,12 +13,23 @@ what survived:
 
 A file that scores "complete" had nothing dropped.  A file that does not is a
 bug report you can act on, not a feeling.
+
+'Survived' and 'still does what it did' are different claims, so a definition that
+is still present is checked for two shapes: a method call on an *empty* literal
+(``[].append(...)`` - the fingerprint of substituting a binding that was never
+valid, and a line no program writes on purpose), and a body that lost more than
+half its statements.  Either one makes the verdict **suspicious** rather than
+complete, and names the definition and the reason.
 """
 from __future__ import annotations
 
 from ..polish.demangle import _ast
 
 _KEPT, _MISSING, _EMPTY, _RENAMED = "kept", "missing", "emptied", "renamed"
+
+#: a definition that survived but looks wrong is its own signal: "kept" is not
+#: the same claim as "still does what it did"
+_SUSPICIOUS = "suspicious"
 
 
 def _count_statements(nodes) -> int:
@@ -38,6 +49,100 @@ def _definitions(tree) -> dict:
         elif isinstance(node, _ast.ClassDef):
             found.setdefault(node.name, ("class", _body_statements(node)))
     return found
+
+
+def _returns(node) -> tuple[set[str], int, int]:
+    """Names returned by *node*, how many literal returns, and how many returns."""
+    names: set[str] = set()
+    literals = 0
+    count = 0
+    for sub in _ast.walk(node):
+        if not isinstance(sub, _ast.Return):
+            continue
+        count += 1
+        if sub.value is None:
+            continue
+        for inner in _ast.walk(sub.value):
+            if isinstance(inner, _ast.Name):
+                names.add(inner.id)
+            elif isinstance(inner, _ast.Constant):
+                literals += 1
+    return names, literals, count
+
+
+def _definitions_by_name(tree) -> dict:
+    """The definition nodes themselves, for the per-definition checks."""
+    found: dict[str, object] = {}
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+            found.setdefault(node.name, node)
+    return found
+
+
+#: methods that only make sense on a container a program made deliberately
+_MUTATORS = {"append", "extend", "insert", "remove", "pop", "clear", "update",
+             "setdefault", "add", "discard", "appendleft", "extendleft"}
+
+
+def _literals_mutated(node) -> list[str]:
+    """Method calls on an *empty* literal: `[].append(x)`, `{}.update(x)`.
+
+    This is the fingerprint of substituting a binding that was never valid - the
+    literal a packer wrote got inlined into the call site that mutates it.  No
+    program writes `[].append(x)` on purpose, and no ordinary folding produces
+    it, so it is a suspicion that costs nothing in noise.
+    """
+    found: list[str] = []
+    for sub in _ast.walk(node):
+        if not isinstance(sub, _ast.Call) or not isinstance(sub.func, _ast.Attribute):
+            continue
+        receiver = sub.func.value
+        empty = ((isinstance(receiver, _ast.List) and not receiver.elts)
+                 or (isinstance(receiver, _ast.Dict) and not receiver.keys)
+                 or (isinstance(receiver, _ast.Tuple) and not receiver.elts))
+        if empty and sub.func.attr in _MUTATORS:
+            shown = "[]" if isinstance(receiver, _ast.List) else \
+                "{}" if isinstance(receiver, _ast.Dict) else "()"
+            found.append(f"{shown}.{sub.func.attr}(...)")
+    return found
+
+
+def suspicion(before_def, after_def) -> list[dict]:
+    """Structural reasons to distrust a definition that technically survived.
+
+    Two shapes:
+
+    * **the body mutates a literal** - `[].append(...)`, `{}.update(...)`.  A
+      program never writes that; a substitution that should not have happened
+      does, e.g. the mutable-literal bug recorded in ``docs/UPGRADES.md`` where
+      ``results = []`` was propagated into ``results.append(...)`` and the
+      function quietly became a no-op.  This is the sharp signal.
+
+    * **the body lost more than half its statements** - which folding does
+      legitimately, so it is reported as something to look at rather than as a
+      proven fault.  Measured on 200 corpus payloads it fires zero times, so it
+      is a free check rather than a noisy one.
+    """
+    reasons: list[dict] = []
+    if after_def is None or before_def is None:
+        return reasons
+    before_statements = _body_statements(before_def)
+    after_statements = _body_statements(after_def)
+
+    mutated = _literals_mutated(after_def)
+    if mutated:
+        reasons.append({
+            "kind": "mutates a literal",
+            "detail": f"{', '.join(sorted(set(mutated)))}: a binding was "
+                      f"substituted into the call site that changes it",
+        })
+    if before_statements >= 5 and after_statements * 2 < before_statements:
+        reasons.append({
+            "kind": "body more than halved",
+            "detail": f"{before_statements} statement(s) before, "
+                      f"{after_statements} after",
+        })
+    return reasons
 
 
 def _module_names(tree) -> set[str]:
@@ -86,6 +191,7 @@ def compare(original: str, recovered: str) -> dict:
         "parsed": False, "definitions": {}, "kept": 0, "lost": 0, "emptied": 0,
         "statements_before": 0, "statements_after": 0, "names_lost": [], "renamed": 0,
         "imports_lost": [], "strings_before": 0, "strings_kept": 0,
+        "suspicions": 0, "suspicious": [],
         "verdict": "unparsed",
     }
     before, after = _parse(original), _parse(recovered)
@@ -99,6 +205,8 @@ def compare(original: str, recovered: str) -> dict:
 
     old_defs = _definitions(before)
     new_defs = _definitions(after)
+    old_nodes = _definitions_by_name(before)
+    new_nodes = _definitions_by_name(after)
     for name, (kind, statements) in sorted(old_defs.items()):
         if name not in new_defs:
             result["definitions"][name] = {"kind": kind, "status": _MISSING,
@@ -135,6 +243,15 @@ def compare(original: str, recovered: str) -> dict:
             result["renamed"] += 1
             result["kept"] += 0
 
+    # a definition that is still there is not automatically still itself
+    for name, node in sorted(old_nodes.items()):
+        info = result["definitions"].get(name)
+        if info is None or info["status"] not in (_KEPT, _RENAMED):
+            continue
+        for reason in suspicion(node, new_nodes.get(info.get("renamed_to", name))):
+            result["suspicious"].append({"definition": name, **reason})
+    result["suspicions"] = len(result["suspicious"])
+
     result["names_lost"] = sorted(_module_names(before) - _module_names(after))
     result["imports_lost"] = sorted(_imports(before) - _imports(after))
     result["statements_before"] = _count_statements(_ast.walk(before))
@@ -153,7 +270,8 @@ def compare(original: str, recovered: str) -> dict:
     string_share = (result["strings_kept"] / result["strings_before"]
                     if result["strings_before"] else 1.0)
     if result["lost"] == 0 and result["emptied"] == 0:
-        result["verdict"] = "complete"
+        # nothing was dropped, but something that survived may not be itself
+        result["verdict"] = _SUSPICIOUS if result["suspicious"] else "complete"
     elif lost_share <= 0.15 and string_share >= 0.5:
         result["verdict"] = "mostly complete"
     else:
@@ -165,8 +283,9 @@ def summary(result: dict) -> str:
     if not result["parsed"]:
         return result["verdict"]
     renamed = f", {result['renamed']} renamed" if result.get("renamed") else ""
+    suspect = (f", {result['suspicions']} suspicious" if result.get("suspicions") else "")
     return (f"{result['verdict']}: {result['kept']} definition(s) kept, "
-            f"{result['lost']} lost{renamed} · {result['strings_kept']}/"
+            f"{result['lost']} lost{renamed}{suspect} · {result['strings_kept']}/"
             f"{result['strings_before']} literals · "
             f"{result['statements_before']}→{result['statements_after']} statements")
 
@@ -196,6 +315,13 @@ def render_markdown(name: str, result: dict) -> str:
                 status += f" → `{info['renamed_to']}`"
             lines.append(f"| `{name_}` | {info['kind']} | {info['before']} | "
                          f"{info['after']} | {status} |")
+        lines.append("")
+    if result.get("suspicious"):
+        lines += ["## Suspicious", "",
+                  "A definition below survived but does not look like itself, which "
+                  "is a different claim from \"kept\":", ""]
+        for item in result["suspicious"]:
+            lines.append(f"- `{item['definition']}` — **{item['kind']}**: {item['detail']}")
         lines.append("")
     if result["names_lost"]:
         lines += [f"- **module names lost**: {', '.join(result['names_lost'])}", ""]

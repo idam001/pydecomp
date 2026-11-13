@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### "complete" now means the code still looks like itself
+
+`--diff` reported `verdict: complete` for the broken `report()` above - the
+definition survived, so the check said complete. Coverage checked whether things
+*were still there*, never whether they were still themselves.
+
+`triage/coverage.py` now reports **suspicious** instead, with the definition named
+and the reason given:
+
+- **mutates a literal**: `[].append(...)`, `{}.update(...)`. No program writes
+  that; a binding substituted into the call site that changes it does. This is the
+  fingerprint of the mutable-literal class of bug, independent of which pass
+  caused it.
+- **body more than halved**: folding does this legitimately, so it is reported as
+  something to look at rather than as a proven fault.
+
+The first draft of the rule was "returns only literals now", and it flagged the
+project's own most common transformation - a decoder inlined into its literal,
+`return _d("aHR0…")` becoming `return 'http://example.invalid'` - making the
+coverage gate's own sample suspicious. Measuring it is what replaced it: the
+literal-receiver rule fires **zero times over 200 corpus payloads**, and the gate
+now asserts both directions, that it catches the bug and that it stays quiet on
+healthy output. Gate `coverage`: **33 checks passed**.
+
 ### The rewriters are now checked by running the code, not by reading it
 
 Every pass under `polish/` rewrites structure that carries meaning - a loop, a
