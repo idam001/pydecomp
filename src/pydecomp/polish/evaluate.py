@@ -582,7 +582,30 @@ class _Folder(_ast.NodeTransformer):
         finally:
             self._in_sink -= 1
 
+    def visit_FunctionDef(self, node):
+        """Fold inside the body, with every name the function binds removed from
+        the environment so a parameter can never be read as a module constant."""
+        shadow = {a.arg for a in node.args.args + node.args.kwonlyargs
+                  + node.args.posonlyargs}
+        for extra in (node.args.vararg, node.args.kwarg):
+            if extra is not None:
+                shadow.add(extra.arg)
+        for sub in _ast.walk(node):
+            if isinstance(sub, _ast.Name) and isinstance(sub.ctx, _ast.Store):
+                shadow.add(sub.id)
+        saved = self.env
+        self.env = {name: value for name, value in saved.items() if name not in shadow}
+        try:
+            node.body = [self.visit(stmt) for stmt in node.body]
+        finally:
+            self.env = saved
+        return node
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
     def visit(self, node):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            return self.visit_FunctionDef(node)
         if isinstance(node, _SKIP):
             return node
         node = super().visit(node)

@@ -159,6 +159,7 @@ def find_payloads(source: str) -> list[Payload]:
     found.extend(_marshal_payloads(tree, ev))
     found.extend(_alphabet_payloads(tree))
     found.extend(_xor_comprehension_payloads(tree, ev))
+    found.extend(_loop_chain_payloads(tree, ev))
     if not found:
         # a mid-chain arithmetic layer: fold it and read the file again
         folded = _folded_source(source)
@@ -380,6 +381,92 @@ def _alphabet_payloads(tree: ast.AST) -> list[Payload]:
             if out[:2] in MAGIC_VERSIONS_BYTES:
                 found.append(Payload([codec], out, "marshal"))
                 break
+    return found
+
+
+_REPLAY_LIMIT = 16
+_REPLAY_BYTES = 64 << 20
+
+
+def _range_count(node) -> int | None:
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "range"):
+        return None
+    args = []
+    for arg in node.args:
+        if not (isinstance(arg, ast.Constant) and isinstance(arg.value, int)):
+            return None
+        args.append(arg.value)
+    if not args or len(args) > 3:
+        return None
+    try:
+        return len(range(*args))
+    except (TypeError, ValueError):
+        return None
+
+
+def _loop_chain_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
+    """Replay `for _ in range(k): x = decode(x)` statically, k times.
+
+    A loader that reassigns one name through a counted loop is a chain with the
+    loop written out longhand; the count is a literal, so the chain is too.
+    """
+    from ..decoders.emoji import parses_as_python
+
+    found: list[Payload] = []
+    spent = 0
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 \
+                and isinstance(stmt.targets[0], ast.Name):
+            try:
+                ev.env[stmt.targets[0].id] = ev.eval(stmt.value)
+            except (EvalUnsafe, EvalFailed, MarshalPayload):
+                pass
+            continue
+        if not isinstance(stmt, ast.For):
+            continue
+        count = _range_count(stmt.iter)
+        if not count or count > _REPLAY_LIMIT:
+            continue
+        targets = {inner.targets[0].id for inner in stmt.body
+                   if isinstance(inner, ast.Assign) and len(inner.targets) == 1
+                   and isinstance(inner.targets[0], ast.Name)}
+        if len(targets) != 1:
+            continue
+        name = targets.pop()
+        if name not in ev.env or not all(isinstance(inner, ast.Assign) for inner in stmt.body):
+            continue
+        value = ev.env[name]
+        try:
+            for _ in range(count):
+                for inner in stmt.body:
+                    ev.env[name] = ev.eval(inner.value)
+                    value = ev.env[name]
+                    spent += len(value.value) if isinstance(value.value, (bytes, str)) else 0
+                    if spent > _REPLAY_BYTES:
+                        raise EvalFailed("replay budget")
+        except (EvalUnsafe, EvalFailed, MarshalPayload, RecursionError):
+            del ev.env[name]
+            continue
+        data = value.value
+        if not isinstance(data, (bytes, bytearray, str)) or not data:
+            del ev.env[name]
+            continue
+        raw = to_bytes(data)
+        recipe = list(value.recipe) + ["replay"]
+        try:
+            if parses_as_python(raw.decode("utf-8")):
+                found.append(Payload(recipe, raw, "python"))
+            elif raw[:2] in MAGIC_VERSIONS_BYTES:
+                found.append(Payload(recipe, raw, "marshal"))
+            else:
+                from ..bytecode.marshal_reader import parse_marshal_blob
+                _version, obj, _layout = parse_marshal_blob(raw)
+                if obj is not None:
+                    found.append(Payload(recipe, raw, "marshal"))
+        except UnicodeDecodeError:
+            pass
+        del ev.env[name]
     return found
 
 

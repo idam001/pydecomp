@@ -10,6 +10,7 @@
     "marker": false,
     "decoder_calls": 0,
     "flat_leftover": 0,
+    "reachable": 3,
     "score": 3
   },
   {
@@ -23,6 +24,7 @@
     "marker": true,
     "decoder_calls": 1,
     "flat_leftover": 0,
+    "reachable": 4,
     "score": 4
   },
   {
@@ -36,20 +38,22 @@
     "marker": true,
     "decoder_calls": 0,
     "flat_leftover": 0,
+    "reachable": 4,
     "score": 4
   },
   {
     "case": "04_b64_zlib_strings",
     "rc": 0,
-    "bytes": 429,
+    "bytes": 368,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
     "endpoint": true,
-    "marker": false,
+    "marker": true,
     "decoder_calls": 0,
     "flat_leftover": 0,
-    "score": 3
+    "reachable": 4,
+    "score": 4
   },
   {
     "case": "05_flattened",
@@ -62,12 +66,13 @@
     "marker": false,
     "decoder_calls": 1,
     "flat_leftover": 0,
+    "reachable": 2,
     "score": 2
   },
   {
     "case": "06_opaque_dead",
     "rc": 0,
-    "bytes": 385,
+    "bytes": 388,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
@@ -75,6 +80,7 @@
     "marker": true,
     "decoder_calls": 0,
     "flat_leftover": 0,
+    "reachable": 3,
     "score": 3
   },
   {
@@ -88,6 +94,7 @@
     "marker": true,
     "decoder_calls": 2,
     "flat_leftover": 0,
+    "reachable": 3,
     "score": 3
   },
   {
@@ -101,6 +108,7 @@
     "marker": false,
     "decoder_calls": 0,
     "flat_leftover": 0,
+    "reachable": 3,
     "score": 3
   },
   {
@@ -114,6 +122,7 @@
     "marker": false,
     "decoder_calls": 0,
     "flat_leftover": 0,
+    "reachable": 3,
     "score": 3
   },
   {
@@ -127,19 +136,21 @@
     "marker": false,
     "decoder_calls": 0,
     "flat_leftover": 0,
+    "reachable": 3,
     "score": 3
   },
   {
     "case": "11_nightmare",
     "rc": 0,
-    "bytes": 2458,
+    "bytes": 554,
     "rebuilt_source": true,
     "compiles": true,
-    "secret": false,
+    "secret": true,
     "endpoint": false,
-    "marker": false,
-    "decoder_calls": 0,
+    "marker": true,
+    "decoder_calls": 2,
     "flat_leftover": 0,
-    "score": 1
+    "reachable": 3,
+    "score": 3
   }
 ]

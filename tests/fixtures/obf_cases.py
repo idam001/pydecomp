@@ -198,11 +198,21 @@ def tag():
 
 
 # --------------------------------------------------------------------- builders
-def write_case(name, filename, blob: bytes, truth: dict):
+#: which of the three truth values a case actually carries. Scoring a case on a
+#: value it never contained measures the benchmark, not the tool.
+PLAIN_VALUES = {"secret": True, "endpoint": True, "marker": False}
+ALL_VALUES = {"secret": True, "endpoint": True, "marker": True}
+MARKED_VALUES = {"secret": True, "endpoint": False, "marker": True}
+SECRET_ONLY = {"secret": True, "endpoint": False, "marker": False}
+
+
+def write_case(name, filename, blob: bytes, truth: dict, contains: dict = None):
     folder = os.path.join(OUT, name)
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, filename), "wb") as handle:
         handle.write(blob)
+    truth = dict(truth)
+    truth["contains"] = dict(contains or ALL_VALUES)
     with open(os.path.join(folder, "truth.json"), "w") as handle:
         json.dump(truth, handle, indent=2)
     return folder
@@ -237,31 +247,31 @@ def build():
     made = []
 
     # 1 - plain .pyc, no obfuscation at all
-    write_case("01_plain_pyc", "sample.pyc", as_pyc(PLAIN), truth)
+    write_case("01_plain_pyc", "sample.pyc", as_pyc(PLAIN), truth, PLAIN_VALUES)
     made.append("01_plain_pyc")
 
     # 2 - XOR string table with a runtime decoder
-    write_case("02_xor_strings", "sample.pyc", as_pyc(xor_strings_source()), truth)
+    write_case("02_xor_strings", "sample.pyc", as_pyc(xor_strings_source()), truth, ALL_VALUES)
     made.append("02_xor_strings")
 
     # 3 - integers expanded to chr() arrays
-    write_case("03_chr_arrays", "sample.pyc", as_pyc(chr_array_source()), truth)
+    write_case("03_chr_arrays", "sample.pyc", as_pyc(chr_array_source()), truth, ALL_VALUES)
     made.append("03_chr_arrays")
 
     # 4 - base64 + zlib per literal
-    write_case("04_b64_zlib_strings", "sample.pyc", as_pyc(b64_layers_source()), truth)
+    write_case("04_b64_zlib_strings", "sample.pyc", as_pyc(b64_layers_source()), truth, ALL_VALUES)
     made.append("04_b64_zlib_strings")
 
     # 5 - control-flow flattened dispatcher
-    write_case("05_flattened", "sample.pyc", as_pyc(FLATTENED), truth)
+    write_case("05_flattened", "sample.pyc", as_pyc(FLATTENED), truth, SECRET_ONLY)
     made.append("05_flattened")
 
     # 6 - opaque predicates and dead code
-    write_case("06_opaque_dead", "sample.pyc", as_pyc(opaque_source()), truth)
+    write_case("06_opaque_dead", "sample.pyc", as_pyc(opaque_source()), truth, MARKED_VALUES)
     made.append("06_opaque_dead")
 
     # 7 - mixed boolean arithmetic
-    write_case("07_mba", "sample.pyc", as_pyc(mixed_boolean_source()), truth)
+    write_case("07_mba", "sample.pyc", as_pyc(mixed_boolean_source()), truth, MARKED_VALUES)
     made.append("07_mba")
 
     # 8 - source hidden inside an exec(compile(b64(zlib(...))))
@@ -270,7 +280,7 @@ def build():
     loader = ('import base64,zlib\n'
               f'_p = "{chain}"\n'
               'exec(compile(zlib.decompress(base64.b64decode(_p)), "<p>", "exec"))\n')
-    write_case("08_exec_layered", "sample.py", loader.encode(), truth)
+    write_case("08_exec_layered", "sample.py", loader.encode(), truth, PLAIN_VALUES)
     made.append("08_exec_layered")
 
     # 9 - marshalled code encrypted with a repeating key, decrypted in a stub
@@ -282,7 +292,7 @@ def build():
             f"_b = {list(payload)}\n"
             "_d = bytes(b ^ _k[i % len(_k)] for i, b in enumerate(_b))\n"
             "exec(marshal.loads(_d))\n")
-    write_case("09_marshal_xor", "sample.py", stub.encode(), truth)
+    write_case("09_marshal_xor", "sample.py", stub.encode(), truth, PLAIN_VALUES)
     made.append("09_marshal_xor")
 
     # 10 - zip bundle holding the pyc (PyInstaller / zipapp shape)
@@ -295,7 +305,7 @@ def build():
         info.compress_type = zipfile.ZIP_DEFLATED
         archive.writestr(info, as_pyc(PLAIN))
     with open(bundle, "rb") as handle:
-        write_case("10_zip_bundle", "bundle.zip", handle.read(), truth)
+        write_case("10_zip_bundle", "bundle.zip", handle.read(), truth, PLAIN_VALUES)
     made.append("10_zip_bundle")
 
     # 11 - the nightmare: layered + encrypted + flattened + opaque + renamed
@@ -332,16 +342,14 @@ def gate(x):
 '''
     blob = marshal.dumps(compile(nightmare_src, "<n>", "exec"))
     for _ in range(3):
-        blob = lzma.compress(zlib.compress(base64.b64encode(blob)))
-        blob = base64.b64encode(blob)
+        blob = base64.b64encode(lzma.compress(zlib.compress(blob)))
     wrapper = ("import base64,lzma,zlib,marshal\n"
                f"_p = {blob.decode()!r}\n"
                "_d = _p\n"
-               "for _ in range(1):\n"
-               "    _d = base64.b64decode(_d)\n"
-               "    _d = zlib.decompress(lzma.decompress(_d))\n"
+               "for _ in range(3):\n"
+               "    _d = zlib.decompress(lzma.decompress(base64.b64decode(_d)))\n"
                "exec(marshal.loads(_d))\n")
-    write_case("11_nightmare", "sample.py", wrapper.encode(), truth)
+    write_case("11_nightmare", "sample.py", wrapper.encode(), truth, MARKED_VALUES)
     made.append("11_nightmare")
 
     shutil.rmtree(os.path.join(OUT, "_tmp"), ignore_errors=True)

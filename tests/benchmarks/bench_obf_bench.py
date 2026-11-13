@@ -50,8 +50,10 @@ def run_case(folder: str) -> dict:
     }
     flat = sum(1 for _ in re.finditer(r"state\s*==", text))
     result["flat_leftover"] = flat
-    result["score"] = sum([result["compiles"], result["secret"],
-                           result["endpoint"], result["marker"]])
+    contains = truth.get("contains") or {key: True for key in ("secret", "endpoint", "marker")}
+    scored = [key for key in ("secret", "endpoint", "marker") if contains.get(key)]
+    result["reachable"] = 1 + len(scored)
+    result["score"] = int(result["compiles"]) + sum(result[key] for key in scored)
     return result
 
 
@@ -73,9 +75,12 @@ def main() -> int:
               f"{'yes' if row['secret'] else ' - ':>7s} "
               f"{'yes' if row['endpoint'] else ' - ':>5s} "
               f"{'yes' if row['marker'] else ' - ':>5s} "
-              f"{row['score']:2d}/4")
+              f"{row['score']:d}/{row['reachable']}")
     total = sum(row["score"] for row in rows)
-    print(f"\nsemantic score: {total}/{4 * len(rows)}  "
+    reachable = sum(row["reachable"] for row in rows)
+    print(f"\nsemantic score: {total}/{reachable} reachable "
+          f"({4 * len(rows)} checks, {4 * len(rows) - reachable} of them on values "
+          f"the case never contains)  "
           f"| rebuilt as source: {sum(1 for r in rows if r['rebuilt_source'])}/{len(rows)}")
     json.dump(rows, open(os.path.join(HERE, "obf_report.json"), "w"), indent=2)
     return 0

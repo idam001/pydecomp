@@ -1,5 +1,10 @@
 {
   "secret": "ghp_9f2Ak4LmQ7pR1sT8uV3wX6yZ0bN5cD",
   "endpoint": "https://api.internal.example/v2/keys",
-  "marker": "RECOVER_ME_7731"
+  "marker": "RECOVER_ME_7731",
+  "contains": {
+    "secret": true,
+    "endpoint": true,
+    "marker": false
+  }
 }
