@@ -88,11 +88,16 @@ def _sniff_digits(blob: bytes) -> float:
 
 BACKENDS = [
     Backend("decimal", "codec", 1, _open_decimal, _sniff_digits,
-            "byte values written out in decimal, any separator"),
+            "byte values written out in decimal, any separator",
+            forge=lambda payload: b", ".join(b"%d" % byte for byte in payload)),
     Backend("octal", "codec", 2, _open_octal, None,
-            "byte values as octal escapes"),
+            "byte values as octal escapes",
+            forge=lambda payload: b" ".join(b"\\%o" % byte for byte in payload)),
     Backend("jsonints", "codec", 1, _open_json_array, _sniff_digits,
-            "a JSON array of byte values"),
+            "a JSON array of byte values",
+            forge=lambda payload: ("[" + ", ".join(str(byte) for byte in payload)
+                                   + "]").encode()),
     Backend("hexpairs", "codec", 1, _open_hex_pairs, _sniff_digits,
-            "hex pairs with : or - between them"),
+            "hex pairs with : or - between them",
+            forge=lambda payload: b":".join(b"%02x" % byte for byte in payload)),
 ]

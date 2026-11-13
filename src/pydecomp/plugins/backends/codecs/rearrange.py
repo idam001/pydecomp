@@ -45,8 +45,14 @@ def _sniff_text(blob: bytes) -> float:
 
 
 BACKENDS = [
-    Backend("reverse", "codec", 0, _open_reverse, None, "the blob read backwards"),
-    Backend("rot13", "codec", 0, _open_rot13, _sniff_text, "rot13 over utf-8 text"),
-    Backend("percent", "codec", 1, _open_percent, _sniff_text, "percent-escaped text"),
+    Backend("reverse", "codec", 0, _open_reverse, None, "the blob read backwards",
+            forge=lambda payload: bytes(payload)[::-1]),
+    Backend("rot13", "codec", 0, _open_rot13, _sniff_text, "rot13 over utf-8 text",
+            forge=lambda payload: bytes(payload).translate(
+                bytes.maketrans(
+                    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+                    b"NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm"))),
+    Backend("percent", "codec", 1, _open_percent, _sniff_text, "percent-escaped text",
+            forge=lambda payload: b"".join(b"%%%02X" % byte for byte in payload)),
     Backend("uu", "codec", 2, _open_uu, None, "uuencoded body with a begin line"),
 ]

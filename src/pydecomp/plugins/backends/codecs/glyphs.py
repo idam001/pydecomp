@@ -34,6 +34,12 @@ HOMO = {
 }
 
 
+#: Latin letter -> the lookalike a writer substitutes for it
+_LOOKALIKE = {}
+for _source, _target in HOMO.items():
+    _LOOKALIKE.setdefault(chr(_target), chr(_source))
+
+
 def _map_text(blob: bytes, table: dict[int, int]) -> bytes | None:
     try:
         text = bytes(blob).decode("utf-8")
@@ -80,7 +86,14 @@ def _sniff_homoglyph(blob: bytes) -> float:
 
 BACKENDS = [
     Backend("fullwidth", "codec", 0, _open_wide, _sniff_wide,
-            "wide forms of ASCII folded back to ASCII"),
+            "wide forms of ASCII folded back to ASCII",
+            forge=lambda payload: "".join(
+                chr(ord(character) + 0xFEE0) for character in payload.decode("latin-1")
+            ).encode("utf-8")),
     Backend("homoglyph", "codec", 0, _open_homoglyph, _sniff_homoglyph,
-            "Cyrillic and Greek letters that render as Latin"),
+            "Cyrillic and Greek letters that render as Latin",
+            forge=lambda payload: "".join(
+                _LOOKALIKE.get(character, character)
+                for character in payload.decode("latin-1")
+            ).encode("utf-8")),
 ]

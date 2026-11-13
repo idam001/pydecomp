@@ -106,13 +106,13 @@ def _keys(blob: bytes, length: int, crib: bytes) -> list[bytes]:
     # every combination of the first two answers for the columns that have them,
     # because one ambiguous column is common and two together is not rare
     close = [slot for slot in ranked if len(ranked[slot]) > 1]
-    if len(close) > 4:
+    if len(close) > 6:
         return [bytes(base)]                 # the best of each column, and no more
     variants = [base]
     for slot in close:
         grown = []
         for variant in variants:
-            for option, _share in ranked[slot][:2]:
+            for option, _share in ranked[slot][:MAX_OPTIONS]:
                 candidate = list(variant)
                 candidate[slot] = option
                 grown.append(candidate)
@@ -200,5 +200,8 @@ def _each_repeating_key(blob: bytes):
 BACKENDS = [
     Backend("xorrepeat", "cipher", 3, None, None,
             "repeating-key XOR, key recovered column by column with known prefixes",
-            each=_each_repeating_key),
+            each=_each_repeating_key,
+            forge=lambda payload: bytes(
+                byte ^ b"\x9d\x2f\x51\x6b\xc4" [index % 5]
+                for index, byte in enumerate(payload))),
 ]

@@ -65,10 +65,12 @@ SUITE = {
     "stress": (ROOT / "tools" / "stress_corpus.py", {}, False),
     "backends": (GATES / "test_backends.py", {}, False),
     "host": (ROOT / "tools" / "host_check.py", {}, False),
+    "matrix": (ROOT / "tools" / "backend_matrix.py", {}, False),
 }
 
 GOOD = re.compile(r"(all good|passed|instruction-identical|probe shapes recovered|"
-                  r"semantic score|examples recovered|ok corpus|ok learned ranking|ok stress)", re.I)
+                  r"semantic score|examples recovered|ok corpus|ok learned ranking|"
+                  r"ok stress|\"failed\": 0)", re.I)
 
 
 def run(name: str, verbose: bool = False) -> dict:
@@ -89,6 +91,8 @@ def run(name: str, verbose: bool = False) -> dict:
         # gate is the hard corner of the space, not the friendly middle
         command += ["--check", "--seeds", "1,2,3,4,5", "--runs", "40",
                     "--depth-max", "24"]
+    if path.name == "backend_matrix.py":
+        command.append("--json")
     if path.name == "eval_corpus.py":
         command.append("--quiet")
     if path.name == "ir_coverage.py":

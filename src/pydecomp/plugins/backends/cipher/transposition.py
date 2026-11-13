@@ -47,6 +47,24 @@ def columnar_decode(blob: bytes, columns: int) -> bytes:
     return bytes(out)
 
 
+def _rail_fence_encode(payload: bytes, rails: int) -> bytes:
+    pattern = list(range(rails)) + list(range(rails - 2, 0, -1))
+    rows: list[list[int]] = [[] for _ in range(rails)]
+    for index, byte in enumerate(payload):
+        rows[pattern[index % len(pattern)]].append(byte)
+    return bytes(byte for row in rows for byte in row)
+
+
+def _columnar_encode(payload: bytes, columns: int) -> bytes:
+    rows = [payload[index:index + columns] for index in range(0, len(payload), columns)]
+    out = bytearray()
+    for column in range(columns):
+        for row in rows:
+            if column < len(row):
+                out.append(row[column])
+    return bytes(out)
+
+
 def _each_rail(blob: bytes):
     found = [rail_fence_decode(blob, rails) for rails in range(2, 9)]
     yield from rank([out for out in found if structured(out)], MAX_CANDIDATES)
@@ -59,7 +77,9 @@ def _each_columnar(blob: bytes):
 
 BACKENDS = [
     Backend("railfence", "cipher", 2, None, None,
-            "rail fence, 2 to 8 rails", each=_each_rail),
+            "rail fence, 2 to 8 rails", each=_each_rail,
+            forge=lambda payload: _rail_fence_encode(payload, 5)),
     Backend("columnar", "cipher", 2, None, None,
-            "columnar transposition, 2 to 16 columns", each=_each_columnar),
+            "columnar transposition, 2 to 16 columns", each=_each_columnar,
+            forge=lambda payload: _columnar_encode(payload, 7)),
 ]

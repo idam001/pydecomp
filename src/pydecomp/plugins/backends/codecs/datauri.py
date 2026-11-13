@@ -37,5 +37,7 @@ def _sniff_data_uri(blob: bytes) -> float:
 
 BACKENDS = [
     Backend("datauri", "codec", 0, _open_data_uri, _sniff_data_uri,
-            "a data: URI, base64 or percent-encoded"),
+            "a data: URI, base64 or percent-encoded",
+            forge=lambda payload: b"data:application/octet-stream;base64,"
+            + base64.b64encode(payload)),
 ]

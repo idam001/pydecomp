@@ -33,9 +33,11 @@ def _each_rotate(blob: bytes, direction: int):
 
 BACKENDS = [
     Backend("addconst", "cipher", 3, None, None,
-            "every byte shifted by one constant", each=lambda blob: _each_shift(blob, -1)),
+            "every byte shifted by one constant", each=lambda blob: _each_shift(blob, -1),
+            forge=lambda payload: _shift(payload, 0x37)),
     Backend("subconst", "cipher", 3, None, None,
-            "the same, in the other direction", each=lambda blob: _each_shift(blob, 1)),
+            "the same, in the other direction", each=lambda blob: _each_shift(blob, 1),
+            forge=lambda payload: _shift(payload, -0x37)),
     Backend("rotl", "cipher", 3, None, None,
             "bit rotation, 7 directions", each=lambda blob: _each_rotate(blob, 1)),
     Backend("rotr", "cipher", 3, None, None,

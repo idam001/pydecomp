@@ -19,10 +19,14 @@ ALPHABETS = {
 }
 
 
+#: the decoder registry spells these out; a backend name is the short form
+REGISTRY_NAME = {"b58": "base58", "b62": "base62", "b45": "base45", "z85": "z85"}
+
+
 def _opener(codec: str):
     def open_with_table(blob: bytes) -> bytes | None:
-        from ...decoders.registry import TRANSFORMS
-        decode = TRANSFORMS.get(codec)
+        from ....decoders.registry import TRANSFORMS
+        decode = TRANSFORMS.get(REGISTRY_NAME.get(codec, codec))
         if decode is None:
             return None
         return decode(bytes(blob))
@@ -41,8 +45,24 @@ def _sniffer(codec: str):
     return sniff
 
 
+def _forger(codec: str):
+    alphabet = ALPHABETS[codec].encode()
+
+    def forge(payload: bytes) -> bytes:
+        number = int.from_bytes(payload, "big") or 0
+        base = len(alphabet)
+        digits = bytearray()
+        while number:
+            number, remainder = divmod(number, base)
+            digits.append(alphabet[remainder])
+        return bytes(digits[::-1]) or bytes(alphabet[:1])
+
+    return forge
+
+
 BACKENDS = [
     Backend(codec, "codec", 1, _opener(codec), _sniffer(codec),
-            f"{codec} with its documented alphabet")
+            f"{codec} with its documented alphabet",
+            forge=_forger(codec) if codec in ("b58", "b62") else None)
     for codec in ("b58", "b62", "b45", "z85")
 ]

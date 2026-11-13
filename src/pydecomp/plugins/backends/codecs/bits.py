@@ -86,7 +86,9 @@ def _sniff_bacon(blob: bytes) -> float:
 
 BACKENDS = [
     Backend("bits", "codec", 1, _open_bits, _sniff_bits,
-            "eight-bit groups spelled 0 and 1, including zero-width spellings"),
+            "eight-bit groups spelled 0 and 1, including zero-width spellings",
+            forge=lambda payload: "".join(format(byte, "08b")
+                                          for byte in payload).encode()),
     Backend("bacon", "codec", 2, _open_bacon, _sniff_bacon,
             "five-bit groups hidden in a run of letters"),
 ]

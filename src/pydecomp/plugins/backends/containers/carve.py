@@ -9,6 +9,8 @@ up two hundred candidates has told you nothing about which one matters.
 
 from __future__ import annotations
 
+import zlib
+
 from ..spec import Backend
 
 #: marker, and what it means for the rest of the blob
@@ -39,5 +41,6 @@ def _each_carve(blob: bytes):
 BACKENDS = [
     Backend("carve", "container", 2, None, None,
             "a layer that starts partway in, found by its magic",
-            each=_each_carve),
+            each=_each_carve,
+            forge=lambda payload: b"\x89PNG banner" + zlib.compress(payload)),
 ]

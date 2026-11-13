@@ -35,7 +35,8 @@ def _sniff_escapes(blob: bytes) -> float:
 
 
 BACKENDS = [
-    Backend("hex", "codec", 0, _open_hex, _sniff_hex, "hex text, 0x prefix optional"),
+    Backend("hex", "codec", 0, _open_hex, _sniff_hex, "hex text, 0x prefix optional",
+            forge=lambda payload: payload.hex().encode()),
     Backend("escapes", "codec", 2, _open_escapes, _sniff_escapes,
             "python escape text turned back into bytes"),
 ]

@@ -421,3 +421,39 @@ def test_noise_is_not_turned_into_a_key():
     from pydecomp.plugins.backends.cipher.repeatkey import _each_repeating_key
 
     assert list(_each_repeating_key(os.urandom(4096))) == []
+
+
+# --------------------------------------------------------------------------
+# the tree checked against itself: every declared inverse has to roundtrip
+# --------------------------------------------------------------------------
+
+def _forged_backends():
+    return [backend for backend in backends() if backend.forge is not None]
+
+
+def test_the_tree_declares_inverses_for_most_of_itself():
+    assert len(_forged_backends()) >= 36
+
+
+@pytest.mark.parametrize("name", [backend.name for backend in _forged_backends()])
+def test_a_declared_inverse_roundtrips(name):
+    from pydecomp.plugins.backends import by_name
+
+    backend = by_name(name)
+    payload = base64.b64encode(zlib.compress(PAYLOAD * 40))
+    forged = backend.inverts(payload)
+    assert forged is not None, f"{name} forged nothing"
+    assert forged != payload
+    if backend.kind == "container":
+        # a container cuts the layer free; opening it is the next step's job
+        assert backend.candidates(forged)
+    else:
+        assert payload in backend.candidates(forged)
+
+
+def test_a_backend_without_an_inverse_says_so_rather_than_guessing():
+    from pydecomp.plugins.backends import by_name
+
+    backend = by_name("pycstrip")          # reads a header somebody else wrote
+    assert backend.forge is None
+    assert backend.inverts(PAYLOAD) is None

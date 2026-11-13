@@ -8,6 +8,8 @@ a guess about which bytes belong to the file.
 
 from __future__ import annotations
 
+import zlib
+
 from ..spec import Backend
 
 MARKERS = (b"\x1f\x8b", b"BZh", b"\xfd7zXZ", b"x\x9c", b"x\xda", b"PK\x03\x04",
@@ -40,7 +42,10 @@ def _drop_trailer(blob: bytes) -> bytes | None:
 
 BACKENDS = [
     Backend("junkprefix", "container", 1, _cut_prefix, None,
-            "cut to a compression header that is not at the start"),
+            "cut to a compression header that is not at the start",
+            forge=lambda payload: bytes(b"\x00padding-before-the-data\x00")
+            + zlib.compress(payload)),
     Backend("junktrail", "container", 0, _drop_trailer, None,
-            "drop padding bytes after the data"),
+            "drop padding bytes after the data",
+            forge=lambda payload: bytes(payload) + b"\x00\x00\x00\x00"),
 ]

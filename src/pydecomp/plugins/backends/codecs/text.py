@@ -55,9 +55,14 @@ def _sniff_b85(blob: bytes) -> float:
 
 
 BACKENDS = [
-    Backend("b64", "codec", 0, _open_b64, _sniff_b64, "standard base64, padding repaired"),
-    Backend("b64url", "codec", 1, _open_b64url, _sniff_b64url, "url-safe base64"),
-    Backend("b32", "codec", 1, _open_b32, _sniff_b32, "base32, case and padding repaired"),
-    Backend("b85", "codec", 1, _open_b85, _sniff_b85, "b85 (python dialect)"),
-    Backend("a85", "codec", 2, _open_a85, _sniff_b85, "a85, adobe delimiters optional"),
+    Backend("b64", "codec", 0, _open_b64, _sniff_b64, "standard base64, padding repaired",
+            forge=base64.b64encode),
+    Backend("b64url", "codec", 1, _open_b64url, _sniff_b64url, "url-safe base64",
+            forge=base64.urlsafe_b64encode),
+    Backend("b32", "codec", 1, _open_b32, _sniff_b32, "base32, case and padding repaired",
+            forge=base64.b32encode),
+    Backend("b85", "codec", 1, _open_b85, _sniff_b85, "b85 (python dialect)",
+            forge=base64.b85encode),
+    Backend("a85", "codec", 2, _open_a85, _sniff_b85, "a85, adobe delimiters optional",
+            forge=base64.a85encode),
 ]

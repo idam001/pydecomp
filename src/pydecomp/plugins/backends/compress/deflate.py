@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import zlib
 
 from ..spec import Backend
@@ -36,8 +37,10 @@ def _open_gzip(blob: bytes) -> bytes | None:
 
 
 BACKENDS = [
-    Backend("zlib", "compress", 0, _open_zlib, None, "zlib stream"),
-    Backend("gzip", "compress", 0, _open_gzip, None, "gzip member"),
+    Backend("zlib", "compress", 0, _open_zlib, None, "zlib stream",
+            forge=zlib.compress),
+    Backend("gzip", "compress", 0, _open_gzip, None, "gzip member",
+            forge=lambda payload: gzip.compress(payload, mtime=0)),
     Backend("rawdeflate", "compress", 1, _open_raw, None,
             "deflate with the zlib header stripped"),
 ]

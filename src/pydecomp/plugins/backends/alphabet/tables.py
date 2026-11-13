@@ -56,8 +56,19 @@ def _sniff(blob: bytes) -> float:
     return sum(1 for byte in blob if byte in B64) / len(blob) * 0.85
 
 
+def _forger(name: str):
+    alphabet = dict(TABLES)[name]
+
+    def forge(payload: bytes) -> bytes:
+        standard = base64.b64encode(payload)
+        return standard.translate(bytes.maketrans(STANDARD, alphabet))
+
+    return forge
+
+
 BACKENDS = [
     Backend(f"b64{alphabet_name}", "codec", 2, _opener(alphabet_name), _sniff,
-            f"base64 with a {alphabet_name} alphabet")
+            f"base64 with a {alphabet_name} alphabet",
+            forge=_forger(alphabet_name))
     for alphabet_name, _alphabet in TABLES
 ]

@@ -55,12 +55,20 @@ def _xor_repeat_self(blob: bytes) -> bytes | None:
     return None
 
 
+def _forge_header_key(payload: bytes, length: int) -> bytes:
+    key = bytes((index * 29 + 7) % 251 for index in range(length))
+    body = bytes(byte ^ key[index % length] for index, byte in enumerate(payload))
+    return key + body
+
+
 BACKENDS = [
     Backend("xor1", "cipher", 3, None, None,
             "single-byte XOR, 255 candidates, kept only if the plaintext is real",
-            each=_xor_single_candidates),
+            each=_xor_single_candidates,
+            forge=lambda payload: bytes(byte ^ 0x5A for byte in payload)),
     Backend("xorhead", "cipher", 2, _xor_header_key, None,
-            "key stored in front of its own ciphertext"),
+            "key stored in front of its own ciphertext",
+            forge=lambda payload: _forge_header_key(payload, 16)),
     Backend("xorself", "cipher", 2, _xor_repeat_self, None,
             "the key repeated as its own key stream"),
 ]

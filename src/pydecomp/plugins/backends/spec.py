@@ -42,6 +42,11 @@ class Backend:
     sniff: Callable[[bytes], float] | None = None
     note: str = ""
     each: Callable[[bytes], Iterable[bytes]] | None = None
+    #: the technique applied in the other direction, when it has one.  A backend
+    #: that declares it can be checked against itself: forge, open, compare.  A
+    #: backend without one is a reading of bytes that were made by something
+    #: else, and the matrix says so rather than pretending otherwise.
+    forge: Callable[[bytes], bytes] | None = None
 
     def worth_trying(self, blob: bytes) -> float:
         if self.sniff is None:
@@ -52,6 +57,14 @@ class Backend:
             return float(self.sniff(blob))
         except Exception:                                 # noqa: BLE001
             return 0.0
+
+    def inverts(self, payload: bytes) -> bytes | None:
+        if self.forge is None:
+            return None
+        try:
+            return bytes(self.forge(payload))
+        except Exception:                                 # noqa: BLE001
+            return None
 
     def candidates(self, blob: bytes) -> list[bytes]:
         if not blob or len(blob) > MAX_BLOB:

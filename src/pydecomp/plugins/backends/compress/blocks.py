@@ -26,6 +26,8 @@ def _open_lzma(blob: bytes) -> bytes | None:
 
 
 BACKENDS = [
-    Backend("bz2", "compress", 0, _open_bz2, None, "bzip2 stream"),
-    Backend("lzma", "compress", 1, _open_lzma, None, "xz or lzma-alone stream"),
+    Backend("bz2", "compress", 0, _open_bz2, None, "bzip2 stream",
+            forge=bz2.compress),
+    Backend("lzma", "compress", 1, _open_lzma, None, "xz or lzma-alone stream",
+            forge=lzma.compress),
 ]
