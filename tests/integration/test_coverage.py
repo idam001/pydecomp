@@ -155,7 +155,8 @@ def main():
     import pathlib as _pathlib
     root = _pathlib.Path(__file__).resolve().parents[2]
     payloads = sorted((root / "corpus").glob("*/*/payload.py"))
-    ok(len(payloads) == 200, f"the corpus is on disk ({len(payloads)} payloads)")
+    ok(len(payloads) >= 200 and len(payloads) % 4 == 0,
+       f"the corpus is on disk ({len(payloads)} payloads, four per family)")
     from pydecomp.polish.apply import polish_source
     verdicts, fired = {}, 0
     for payload in payloads:
@@ -165,7 +166,7 @@ def main():
         verdicts[result["verdict"]] = verdicts.get(result["verdict"], 0) + 1
         fired += result["suspicions"]
     ok(set(verdicts) == {"complete"},
-       f"cleaning 200 real payloads raises no suspicion: {verdicts}")
+       f"cleaning {len(payloads)} real payloads raises no suspicion: {verdicts}")
     ok(fired == 0, f"suspicion count across the corpus: {fired}")
 
     if FAILED:

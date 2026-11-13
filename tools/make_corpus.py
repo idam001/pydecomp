@@ -21,15 +21,14 @@ import base64
 import bz2
 import codecs
 import gzip
+import importlib.util
 import hashlib
 import json
 import lzma
 import marshal
 import os
-import py_compile
 import shutil
 import sys
-import tempfile
 import zipfile
 import zlib
 
@@ -93,7 +92,8 @@ OPS = {
             "bytes.fromhex({x}.decode())"),
     "zlib": (zlib.compress, zlib.decompress, "zlib.decompress({x})"),
     "lzma": (lzma.compress, lzma.decompress, "lzma.decompress({x})"),
-    "gzip": (gzip.compress, gzip.decompress, "gzip.decompress({x})"),
+    "gzip": (lambda data: gzip.compress(data, mtime=0), gzip.decompress,
+             "gzip.decompress({x})"),
     "bz2": (bz2.compress, bz2.decompress, "bz2.decompress({x})"),
     "reverse": (lambda b: b[::-1], lambda b: b[::-1], "({x})[::-1]"),
     "rot13": (lambda b: codecs.encode(b.decode(), "rot13").encode(),
@@ -248,6 +248,15 @@ FAMILIES: dict[str, dict] = {
     "aw_getattribute": {"layers": ("b64",), "sink": "getattribute"},
     "ax_split_sink": {"layers": ("zlib",), "sink": "split"},
     "at_chr_arith": {"layers": (), "tail": "chr_arith"},
+    "ay_loop_replay": {"layers": ("b64", "lzma", "zlib"), "tail": "loop_replay"},
+    "az_str_builder": {"layers": (), "tail": "str_builder"},
+    "ba_map_chr": {"layers": (), "tail": "map_chr"},
+    "bb_int_bytes": {"layers": (), "tail": "int_bytes"},
+    "bc_chunks": {"layers": (), "tail": "chunks"},
+    "bd_while_break": {"layers": ("zlib", "b64"), "tail": "while_break"},
+    "be_dict_dispatch": {"layers": ("b64",), "tail": "dict_dispatch"},
+    "bf_zip_xor": {"layers": (), "tail": "zip_xor"},
+    "bg_hex_xor": {"layers": (), "tail": "hex_xor"},
 
 
 }
@@ -256,19 +265,14 @@ HEADER = "import base64, codecs, zlib, lzma, gzip, bz2, marshal\n_p = {blob}\n"
 
 
 def compile_artifacts(source: str) -> dict:
-    """The .pyc and bare marshal bytes for a payload.  Nothing is executed."""
-    folder = tempfile.mkdtemp(prefix="corpus-")
-    try:
-        path = os.path.join(folder, "payload.py")
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(source)
-        target = path + "c"
-        py_compile.compile(path, cfile=target, doraise=True)
-        with open(target, "rb") as handle:
-            pyc = handle.read()
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
-    return {"pyc": pyc, "marshal": marshal.dumps(compile(source, "payload.py", "exec"))}
+    """The .pyc and bare marshal bytes for a payload.  Nothing is executed.
+
+    The header is written here rather than by py_compile so the bytes do not
+    depend on the moment the corpus is built: flags 0, source mtime 0, size 0.
+    """
+    code = marshal.dumps(compile(source, "payload.py", "exec"))
+    header = importlib.util.MAGIC_NUMBER + b"\x00" * 12
+    return {"pyc": header + code, "marshal": code}
 
 
 def cook(payload: bytes, layers: tuple[str, ...]) -> tuple[bytes, list[str]]:
@@ -418,6 +422,81 @@ def loader_for(cooked: bytes, layers: tuple[str, ...], tail: str) -> str:
                         "exec(_n.to_bytes((_n.bit_length() + 7) // 8, 'big')"
                         ".decode())\n")
         truth_layers = list(truth_layers)
+    elif tail == "loop_replay":
+        cooked, truth_layers = cook(raw, layers)
+        undo = "_d"
+        for layer in reversed(layers):
+            undo = {"b64": "base64.b64decode({x})", "zlib": "zlib.decompress({x})",
+                    "lzma": "lzma.decompress({x})", "gzip": "gzip.decompress({x})",
+                    "bz2": "bz2.decompress({x})"}[layer].format(x=undo)
+        loader = (HEADER.format(blob=repr(cooked))
+                  + "_d = _p\n"
+                    "for _ in range(1):\n"
+                    f"    _d = {undo}\n"
+                    "exec(_d.decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "str_builder":
+        cooked = raw
+        loader = ("_n = %r\n"
+                  "_s = ''\n"
+                  "for _c in _n:\n"
+                  "    _s += chr(_c)\n"
+                  "exec(_s)\n" % list(raw))
+        truth_layers = ["str-builder"]
+    elif tail == "map_chr":
+        cooked = raw
+        loader = ("_n = %r\n"
+                  "exec(''.join(map(chr, _n)))\n" % list(raw))
+        truth_layers = ["map-chr"]
+    elif tail == "int_bytes":
+        number = int.from_bytes(raw, "big")
+        cooked = raw
+        loader = ("_n = %d\n"
+                  "_b = _n.to_bytes((_n.bit_length() + 7) // 8, 'big')\n"
+                  "exec(_b.decode())\n" % number)
+        truth_layers = ["big-int"]
+    elif tail == "chunks":
+        pieces = [raw[index:index + 17] for index in range(0, len(raw), 17)]
+        cooked = raw
+        loader = ("_c = %r\n"
+                  "exec(''.join(_c))\n" % [piece.decode("utf-8", "surrogateescape")
+                                           for piece in pieces])
+        truth_layers = ["chunk-join"]
+    elif tail == "while_break":
+        cooked, truth_layers = cook(raw, layers)
+        loader = (HEADER.format(blob=repr(cooked))
+                  + "_d = None\n"
+                    "while True:\n"
+                    "    _d = zlib.decompress(base64.b64decode(_p))\n"
+                    "    break\n"
+                    "exec(_d.decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "dict_dispatch":
+        cooked, truth_layers = cook(raw, layers)
+        loader = (HEADER.format(blob=repr(cooked))
+                  + "_T = {0: lambda: base64.b64decode(_p)}\n"
+                    "_S = 0\n"
+                    "_v = None\n"
+                    "while _S in _T:\n"
+                    "    _v = _T[_S]()\n"
+                    "    _S += 1\n"
+                    "exec(_v.decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "zip_xor":
+        key = b"\x1d\x5b\x93"
+        mixed = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(raw))
+        cooked = raw
+        loader = ("_k = %r\n"
+                  "_m = %r\n"
+                  "exec(bytes(a ^ b for a, b in zip(_m, _k * (len(_m) // len(_k) + 1)))"
+                  ".decode())\n" % (list(key), list(mixed)))
+        truth_layers = ["zip-xor"]
+    elif tail == "hex_xor":
+        cooked = raw
+        loader = ("_h = %r\n"
+                  "exec(bytes(b ^ 0x37 for b in bytes.fromhex(_h)).decode())\n"
+                  % bytes(byte ^ 0x37 for byte in raw).hex())
+        truth_layers = ["hex-xor"]
     elif tail == "zip2":
         body = f"_inner = {expression}\n"
     elif tail == "marshal":
@@ -543,16 +622,95 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
                         "exec(_n.to_bytes((_n.bit_length() + 7) // 8, 'big')"
                         ".decode())\n")
         truth_layers = list(truth_layers)
+    elif tail == "loop_replay":
+        cooked, truth_layers = cook(raw, layers)
+        undo = "_d"
+        for layer in reversed(layers):
+            undo = {"b64": "base64.b64decode({x})", "zlib": "zlib.decompress({x})",
+                    "lzma": "lzma.decompress({x})", "gzip": "gzip.decompress({x})",
+                    "bz2": "bz2.decompress({x})"}[layer].format(x=undo)
+        loader = (HEADER.format(blob=repr(cooked))
+                  + "_d = _p\n"
+                    "for _ in range(1):\n"
+                    f"    _d = {undo}\n"
+                    "exec(_d.decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "str_builder":
+        cooked = raw
+        loader = ("_n = %r\n"
+                  "_s = ''\n"
+                  "for _c in _n:\n"
+                  "    _s += chr(_c)\n"
+                  "exec(_s)\n" % list(raw))
+        truth_layers = ["str-builder"]
+    elif tail == "map_chr":
+        cooked = raw
+        loader = ("_n = %r\n"
+                  "exec(''.join(map(chr, _n)))\n" % list(raw))
+        truth_layers = ["map-chr"]
+    elif tail == "int_bytes":
+        number = int.from_bytes(raw, "big")
+        cooked = raw
+        loader = ("_n = %d\n"
+                  "_b = _n.to_bytes((_n.bit_length() + 7) // 8, 'big')\n"
+                  "exec(_b.decode())\n" % number)
+        truth_layers = ["big-int"]
+    elif tail == "chunks":
+        pieces = [raw[index:index + 17] for index in range(0, len(raw), 17)]
+        cooked = raw
+        loader = ("_c = %r\n"
+                  "exec(''.join(_c))\n" % [piece.decode("utf-8", "surrogateescape")
+                                           for piece in pieces])
+        truth_layers = ["chunk-join"]
+    elif tail == "while_break":
+        cooked, truth_layers = cook(raw, layers)
+        loader = (HEADER.format(blob=repr(cooked))
+                  + "_d = None\n"
+                    "while True:\n"
+                    "    _d = zlib.decompress(base64.b64decode(_p))\n"
+                    "    break\n"
+                    "exec(_d.decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "dict_dispatch":
+        cooked, truth_layers = cook(raw, layers)
+        loader = (HEADER.format(blob=repr(cooked))
+                  + "_T = {0: lambda: base64.b64decode(_p)}\n"
+                    "_S = 0\n"
+                    "_v = None\n"
+                    "while _S in _T:\n"
+                    "    _v = _T[_S]()\n"
+                    "    _S += 1\n"
+                    "exec(_v.decode())\n")
+        truth_layers = list(truth_layers)
+    elif tail == "zip_xor":
+        key = b"\x1d\x5b\x93"
+        mixed = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(raw))
+        cooked = raw
+        loader = ("_k = %r\n"
+                  "_m = %r\n"
+                  "exec(bytes(a ^ b for a, b in zip(_m, _k * (len(_m) // len(_k) + 1)))"
+                  ".decode())\n" % (list(key), list(mixed)))
+        truth_layers = ["zip-xor"]
+    elif tail == "hex_xor":
+        cooked = raw
+        loader = ("_h = %r\n"
+                  "exec(bytes(b ^ 0x37 for b in bytes.fromhex(_h)).decode())\n"
+                  % bytes(byte ^ 0x37 for byte in raw).hex())
+        truth_layers = ["hex-xor"]
     elif tail == "zip2":
         inner = os.path.join(folder, ".inner.zip")
-        with zipfile.ZipFile(inner, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("payload.py", source)
+        info = zipfile.ZipInfo("payload.py", date_time=(1980, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        with zipfile.ZipFile(inner, "w") as archive:
+            archive.writestr(info, source)
         with open(inner, "rb") as handle:
             packed = handle.read()
         os.unlink(inner)
         outer = os.path.join(folder, ".outer.zip")
-        with zipfile.ZipFile(outer, "w", zipfile.ZIP_STORED) as archive:
-            archive.writestr("inner.zip", packed)
+        info = zipfile.ZipInfo("inner.zip", date_time=(1980, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_STORED
+        with zipfile.ZipFile(outer, "w") as archive:
+            archive.writestr(info, packed)
         with open(outer, "rb") as handle:
             packed = handle.read()
         os.unlink(outer)

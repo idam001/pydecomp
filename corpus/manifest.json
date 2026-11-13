@@ -1,5 +1,5 @@
 {
- "cases": 200,
+ "cases": 236,
  "families": {
   "a_b64": [
    {
@@ -851,6 +851,74 @@
     "payload": "text"
    }
   ],
+  "ay_loop_replay": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "lzma",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "lzma",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "lzma",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "lzma",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "az_str_builder": [
+   {
+    "expect": "recover",
+    "layers": [
+     "str-builder"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "str-builder"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "str-builder"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "str-builder"
+    ],
+    "payload": "text"
+   }
+  ],
   "b_b64_twice": [
    {
     "expect": "recover",
@@ -881,6 +949,220 @@
     "layers": [
      "b64",
      "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ba_map_chr": [
+   {
+    "expect": "recover",
+    "layers": [
+     "map-chr"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "map-chr"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "map-chr"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "map-chr"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bb_int_bytes": [
+   {
+    "expect": "recover",
+    "layers": [
+     "big-int"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "big-int"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "big-int"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "big-int"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bc_chunks": [
+   {
+    "expect": "recover",
+    "layers": [
+     "chunk-join"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "chunk-join"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "chunk-join"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "chunk-join"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bd_while_break": [
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "be_dict_dispatch": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bf_zip_xor": [
+   {
+    "expect": "recover",
+    "layers": [
+     "zip-xor"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zip-xor"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zip-xor"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zip-xor"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bg_hex_xor": [
+   {
+    "expect": "recover",
+    "layers": [
+     "hex-xor"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "hex-xor"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "hex-xor"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "hex-xor"
     ],
     "payload": "text"
    }

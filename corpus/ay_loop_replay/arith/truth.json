@@ -1,0 +1,12 @@
+{
+ "expect": "recover",
+ "family": "ay_loop_replay",
+ "layers": [
+  "b64",
+  "lzma",
+  "zlib"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "loop_replay"
+}

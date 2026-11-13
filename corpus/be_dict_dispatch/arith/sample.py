@@ -1,0 +1,9 @@
+import base64, codecs, zlib, lzma, gzip, bz2, marshal
+_p = b'ZGVmIGFyZWEod2lkdGgsIGhlaWdodCk6CiAgICBpZiB3aWR0aCA8PSAwIG9yIGhlaWdodCA8PSAwOgogICAgICAgIHJhaXNlIFZhbHVlRXJyb3IoJ3Bvc2l0aXZlIG9ubHknKQogICAgcmV0dXJuIHdpZHRoICogaGVpZ2h0Cgp0b3RhbCA9IDAKZm9yIHNpZGUgaW4gWzIsIDMsIDVdOgogICAgdG90YWwgKz0gYXJlYShzaWRlLCBzaWRlKQo='
+_T = {0: lambda: base64.b64decode(_p)}
+_S = 0
+_v = None
+while _S in _T:
+    _v = _T[_S]()
+    _S += 1
+exec(_v.decode())
