@@ -368,3 +368,56 @@ def test_an_unwritten_buffer_is_not_a_payload():
               "print(_out)\n"
               "raise SystemExit(0)\n" % bytes(written))
     assert [item.data for item in find_payloads(source)] == []
+
+
+def test_data_uris_give_up_their_bytes():
+    from pydecomp.plugins.backends.codecs.datauri import _open_data_uri
+
+    packed = base64.b64encode(zlib.compress(PAYLOAD)).decode()
+    assert _open_data_uri(("data:application/octet-stream;base64," + packed).encode()) \
+        == zlib.compress(PAYLOAD)
+    spelled = "".join("%%%02X" % byte for byte in PAYLOAD).encode()
+    assert _open_data_uri(b"data:text/plain," + spelled) == PAYLOAD
+    assert _open_data_uri(b"data:") is None
+    assert _open_data_uri(PAYLOAD) is None
+
+
+def test_wide_and_lookalike_text_fold_back():
+    from pydecomp.plugins.backends.codecs.glyphs import _open_homoglyph, _open_wide
+
+    wide = "".join(chr(ord(character) + 0xFEE0) for character in "def greet():")
+    assert _open_wide(wide.encode()) == b"def greet():"
+    lookalike = "def gre\u0435t(n\u0430me):"      # Cyrillic e and a
+    assert _open_homoglyph(lookalike.encode()) == b"def greet(name):"
+    assert _open_wide(PAYLOAD) is None
+    assert _open_homoglyph(PAYLOAD) is None
+
+
+def _repeating_key_fixture(length: int, repeats: int = 150) -> tuple[bytes, bytes]:
+    source = b"".join(b"def step%d(value):\n    return value * %d + 1\n\n" % (index, index)
+                      for index in range(repeats))
+    plain = base64.b64encode(zlib.compress(source))
+    key = bytes((index * 37 + 11) % 251 for index in range(length))
+    return plain, bytes(byte ^ key[index % length] for index, byte in enumerate(plain))
+
+
+@pytest.mark.parametrize("length", [3, 6, 8])
+def test_a_repeating_key_is_recovered_without_the_key_in_the_file(length):
+    from pydecomp.plugins.backends.cipher.repeatkey import _each_repeating_key
+
+    plain, cipher = _repeating_key_fixture(length)
+    assert plain in list(_each_repeating_key(cipher))
+
+
+def test_a_short_ciphertext_is_not_claimed():
+    from pydecomp.plugins.backends.cipher.repeatkey import MIN_COLUMN, _each_repeating_key
+
+    plain, cipher = _repeating_key_fixture(4)
+    truncated = cipher[:MIN_COLUMN - 1]
+    assert list(_each_repeating_key(truncated)) == []
+
+
+def test_noise_is_not_turned_into_a_key():
+    from pydecomp.plugins.backends.cipher.repeatkey import _each_repeating_key
+
+    assert list(_each_repeating_key(os.urandom(4096))) == []

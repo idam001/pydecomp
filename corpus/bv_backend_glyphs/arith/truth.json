@@ -1,0 +1,12 @@
+{
+ "expect": "recover",
+ "family": "bv_backend_glyphs",
+ "layers": [
+  "fullwidth",
+  "base64",
+  "zlib"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "backend_glyphs"
+}

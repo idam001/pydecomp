@@ -1,5 +1,5 @@
 {
- "cases": 288,
+ "cases": 296,
  "families": {
   "a_b64": [
    {
@@ -1623,6 +1623,78 @@
     "expect": "recover",
     "layers": [
      "decimal",
+     "base64",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bu_backend_datauri": [
+   {
+    "expect": "recover",
+    "layers": [
+     "datauri",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "datauri",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "datauri",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "datauri",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bv_backend_glyphs": [
+   {
+    "expect": "recover",
+    "layers": [
+     "fullwidth",
+     "base64",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "fullwidth",
+     "base64",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "fullwidth",
+     "base64",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "fullwidth",
      "base64",
      "zlib"
     ],

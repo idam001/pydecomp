@@ -270,6 +270,8 @@ FAMILIES: dict[str, dict] = {
     "br_backend_bits": {"layers": (), "tail": "backend_bits"},
     "bs_backend_columns": {"layers": (), "tail": "backend_columns"},
     "bt_backend_numbers": {"layers": (), "tail": "backend_numbers"},
+    "bu_backend_datauri": {"layers": (), "tail": "backend_datauri"},
+    "bv_backend_glyphs": {"layers": (), "tail": "backend_glyphs"},
 
 
 }
@@ -703,6 +705,28 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
                   ".b64decode(_b)))\n" % numbers)
         cooked = raw
         truth_layers = ["decimal", "base64", "zlib"]
+    elif tail == "backend_datauri":
+        inner = base64.b64encode(zlib.compress(raw))
+        uri = "data:application/octet-stream;base64," + inner.decode("ascii")
+        loader = ("import os\n"
+                  "_one = int(os.environ.get('PYDECOMP_ONE', '1'))\n"
+                  "_u = %r\n"
+                  "_body = _u.split(',', 1)[_one]\n"
+                  "exec(__import__('zlib').decompress(__import__('base64')"
+                  ".b64decode(_body)))\n" % uri)
+        cooked = raw
+        truth_layers = ["datauri", "zlib"]
+    elif tail == "backend_glyphs":
+        inner = base64.b64encode(zlib.compress(raw)).decode("ascii")
+        wide = "".join(chr(ord(character) + 0xFEE0) for character in inner)
+        loader = ("import os\n"
+                  "_delta = int(os.environ.get('PYDECOMP_DELTA', '65248'))\n"
+                  "_s = %r\n"
+                  "_b = ''.join(chr(ord(_c) - _delta) for _c in _s).encode('ascii')\n"
+                  "exec(__import__('zlib').decompress(__import__('base64')"
+                  ".b64decode(_b)))\n" % wide)
+        cooked = raw
+        truth_layers = ["fullwidth", "base64", "zlib"]
     elif tail == "zip2":
         inner = os.path.join(folder, ".inner.zip")
         info = zipfile.ZipInfo("payload.py", date_time=(1980, 1, 1, 0, 0, 0))
