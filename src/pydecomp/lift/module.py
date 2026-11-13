@@ -566,8 +566,34 @@ def _lift_module5(code: CodeObj, version: tuple) -> str:
 
 SIZE_BUDGET = 2_000_000
 
+def provenance(stamp_text: str = "") -> str:
+    """The one line every recovered file starts with."""
+    try:
+        from ..terminal.banner import stamp as _stamp
+        return _stamp()
+    except Exception:                                # noqa: BLE001
+        from ..terminal.identity import SIGNATURE
+        return SIGNATURE
+
+
+def with_provenance(text: str) -> str:
+    """The reconstruction, preceded by the line that says who produced it."""
+    body = ensure_parseable(clamp_indent(sanitize(text.rstrip().split("\n"))))
+    return "\n".join([provenance()] + list(body)) + "\n"
+
+
 def lift_module(code: CodeObj, version: tuple) -> str:
     """Whole-module reconstruction: rebuilt source where proven, lifter elsewhere."""
+    from ..bytecode.ir_pipeline import lift_module_ir
+
+    ir_text, ir_report = lift_module_ir(code, version)
+    LIFT_QUALITY["ir"] = ir_report
+    if ir_text is not None:
+        # the SSA emitter produced text that recompiles to the same instructions
+        LIFT_QUALITY["proven"] = True
+        LIFT_QUALITY["engine"] = "ssa-ir"
+        return with_provenance(ir_text)
+    LIFT_QUALITY["engine"] = "stack"
     try:
         text = _lift_module6(code, version)
     except Exception as exc:                         # noqa: BLE001 - never fail the run

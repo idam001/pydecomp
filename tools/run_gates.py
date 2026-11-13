@@ -58,6 +58,7 @@ SUITE = {
     "evidence": (ROOT / "tools" / "make_evidence.py", {}, False),
     "examples": (EXAMPLES, {}, False),
     "corpus": (ROOT / "tools" / "eval_corpus.py", {}, False),
+    "ir": (ROOT / "tools" / "ir_coverage.py", {}, False),
     "learn": (ROOT / "tools" / "train_learn.py", {}, False),
     "stress": (ROOT / "tools" / "stress_corpus.py", {}, False),
 }
@@ -86,6 +87,9 @@ def run(name: str, verbose: bool = False) -> dict:
                     "--depth-max", "24"]
     if path.name == "eval_corpus.py":
         command.append("--quiet")
+    if path.name == "ir_coverage.py":
+        # a floor, not a target: coverage may grow, it may not slip
+        command += ["--check", "--quiet"]
     if heavy:
         # the native gate parses a 92 KB ELF with a pure-Python DWARF reader
         command = ["/bin/sh", "-c", f"ulimit -v 4000000; exec {' '.join(command)}"]

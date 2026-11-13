@@ -41,15 +41,15 @@
   {
     "case": "04_b64_zlib_strings",
     "rc": 0,
-    "bytes": 368,
+    "bytes": 429,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,
     "endpoint": true,
-    "marker": true,
+    "marker": false,
     "decoder_calls": 0,
     "flat_leftover": 0,
-    "score": 4
+    "score": 3
   },
   {
     "case": "05_flattened",
@@ -80,7 +80,7 @@
   {
     "case": "07_mba",
     "rc": 0,
-    "bytes": 240,
+    "bytes": 223,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,

@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-30 gates, plus 280 unit tests:
+30 gates, plus 305 unit tests:
 
 | Gate | Result |
 |---|---|

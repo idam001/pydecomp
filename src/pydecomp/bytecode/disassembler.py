@@ -65,7 +65,11 @@ def disassemble(code: CodeObj, version: tuple):
         elif opname == "CONTAINS_OP":
             text = "not in" if arg else "in"
         elif "JUMP" in opname or opname in ("FOR_ITER", "SEND"):
-            text = (f"to {off + 2 - arg * 2}" if "BACKWARD" in opname
-                    else f"to {off + 2 + arg * 2}")
+            # 3.13 measures a jump from the end of the instruction that follows
+            # it - two bytes further than 3.12 did.  Checked against the
+            # interpreter for forward and backward edges, plain and fused.
+            pad = 2 if version >= (3, 13) else 0
+            text = (f"to {off + 2 + pad - arg * 2}" if "BACKWARD" in opname
+                    else f"to {off + 2 + pad + arg * 2}")
         yield off, opname, arg, text
         off += 2
