@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Two more ways to hide the call, and the shapes that hold them
+
+Four more loader shapes went into the fuzz — `getattr(__import__('builtins'),
+'exec')`, a dict-dispatch table, a `while True:` driver, and a class whose method
+does the work. Two of them found something:
+
+- **`getattr` is a name.** `dotted()` resolved `__import__("zlib").decompress`
+  but not `getattr(__import__("zlib"), "decompress")`, so a loader that reaches
+  the sink through `getattr` was invisible: 21/50 random stacks. Resolving the
+  constant-name form took it to **50/50**.
+- **A method is a function nobody calls by name.** The payload search simulated a
+  `def` only when the module called it by name, so a loader inside
+  `class _Loader: def run(self)` — the Hyperion shape — was unreadable: 3/50.
+  `_namespace_payloads` now also simulates any function whose body contains a
+  dynamic sink, binding declared defaults and skipping `self`.
+  **50/50**.
+- The dict-dispatch and `while True:` shapes needed nothing; both were already
+  read, which is worth knowing before optimising for them.
+
+`stress` is now 200/200 over five seeds at up to 24 layers with ten shapes
+(floor 196), and 100/100 on seeds 6 and 7, which the gate never sees.
+
 ### The loop that stopped at a thousand, and said nothing
 
 The random-stack harness grew the alphabet codecs and a depth axis to 24, and

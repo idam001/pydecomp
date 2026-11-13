@@ -118,6 +118,14 @@ def _chunk(text: str, size: int = 40) -> list[str]:
     return [text[i:i + size] for i in range(0, len(text), size)]
 
 
+def _stages(loader: str) -> str:
+    """The decoding statements, without the ``exec`` that consumes them."""
+    lines = loader.rstrip("\n").splitlines()
+    while lines and lines[-1].strip().startswith("exec("):
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
 def wrap(loader: str, name: str) -> str:
     """Put the loader inside one of the shapes obfuscators actually ship."""
     if name == "bare":
@@ -132,6 +140,16 @@ def wrap(loader: str, name: str) -> str:
         parts = _chunk(loader)
         body = ", ".join(repr(part) for part in parts)
         return "parts = [%s]\nexec(''.join(parts))\n" % body
+    if name == "getattr":
+        return _stages(loader) + "getattr(__import__('builtins'), 'exec')(_p)\n"
+    if name == "dispatch":
+        return (_stages(loader)
+                + "_d = {'go': lambda v: exec(v)}\n_d['go'](_p)\n")
+    if name == "while-driver":
+        return "while True:\n" + _indent(loader.rstrip("\n")) + "\n    break\n"
+    if name == "class":
+        return ("class _Loader:\n    def run(self):\n"
+                + _indent(_indent(loader.rstrip("\n"))) + "\n\n_Loader().run()\n")
     if name == "reversed-lines":
         lines = loader.splitlines()
         body = ", ".join(repr(line + "\n") for line in reversed(lines))
@@ -143,7 +161,8 @@ def wrap(loader: str, name: str) -> str:
 DEPTHS = (1, 2, 3, 4, 6, 8, 12, 16, 20, 24)
 
 
-WRAPPERS = ("bare", "bare", "function", "decoy", "chunks", "reversed-lines")
+WRAPPERS = ("bare", "bare", "function", "decoy", "chunks", "reversed-lines",
+            "getattr", "dispatch", "while-driver", "class")
 
 
 def build(seed: int, run: int, depth_max: int = 12) -> tuple[str, bytes, str, str]:
@@ -197,8 +216,11 @@ def grade(loader: str, payload: bytes) -> dict:
     with open(sample, "w", encoding="utf-8") as handle:
         handle.write(loader)
     out = os.path.join(folder, "out")
-    with contextlib.redirect_stdout(io.StringIO()):
-        written = run(sample, out, clean=False, reports=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        warnings.simplefilter("ignore", DeprecationWarning)
+        with contextlib.redirect_stdout(io.StringIO()):
+            written = run(sample, out, clean=False, reports=False)
     text = ""
     if written and os.path.isfile(written):
         with open(written, encoding="utf-8", errors="surrogateescape") as handle:

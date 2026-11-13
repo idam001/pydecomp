@@ -46,6 +46,15 @@ class Evaluator:
                     if mod in MODULE_NAMES:
                         return mod
                     raise EvalUnsafe(f"import of {mod!r}")
+            # getattr(builtins, "exec")  /  getattr(__import__('zlib'), 'decompress')
+            # - the spelling a loader uses when it wants the call to look dynamic
+            if f in ("getattr", "builtins.getattr"):
+                if len(node.args) == 2 and all(
+                        isinstance(a, ast.Constant) and isinstance(a.value, str)
+                        for a in node.args[1:]):
+                    base = self.dotted(node.args[0])
+                    return f"{base}.{node.args[1].value}"
+                raise EvalUnsafe("dynamic getattr")
             raise EvalUnsafe("dynamic call in attribute chain")
         if isinstance(node, ast.Subscript):
             raise EvalUnsafe("subscript in attribute chain")

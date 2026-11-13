@@ -78,3 +78,33 @@ def test_ranking_prefers_a_program_over_a_longer_blob() -> None:
     loader = ("import base64\n_p = %r\n"
               "exec(base64.b64decode(bytes([b ^ 0x33 for b in _p])))\n") % (blob,)
     assert find_payloads(loader)[0].data == source
+
+
+def test_getattr_is_a_name_not_a_mystery() -> None:
+    """`getattr(builtins, "exec")` is `exec`, and the sink scan has to agree."""
+    source = (
+        "import zlib\n"
+        "_p = %r\n"
+        "_p = zlib.decompress(_p)\n"
+        "getattr(__import__('builtins'), 'exec')(_p)\n"
+    ) % (__import__("zlib").compress(b"def f():\n    return 2\n"),)
+    found = find_payloads(source)
+    assert any(b"def f()" in item.data for item in found)
+
+
+def test_a_loader_inside_a_class_method_is_read() -> None:
+    """Hyperion hides the loader in a method; nothing calls it by name."""
+    import zlib
+
+    payload = b"def hidden():\n    return 3\n"
+    source = (
+        "import zlib\n"
+        "class _Loader:\n"
+        "    def run(self):\n"
+        "        blob = %r\n"
+        "        blob = zlib.decompress(blob)\n"
+        "        exec(blob)\n"
+        "\n_Loader().run()\n"
+    ) % (zlib.compress(payload),)
+    found = find_payloads(source)
+    assert any(item.data == payload for item in found)

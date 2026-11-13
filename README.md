@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-30 gates, plus 277 unit tests:
+30 gates, plus 279 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -311,7 +311,7 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `examples` — the six worked examples | 6/6 recovered |
 | `corpus` — 46 families × 4 payloads | 184/184 recovered |
 | `learn` — trained decoder ranking | 37.5% → 75.0% top-1, 7.81 → 1.62 decodes |
-| `stress` — 200 random stacks, up to 24 layers, 18 codecs, 6 loader shapes | 200/200 recovered (floor 196) |
+| `stress` — 200 random stacks, up to 24 layers, 18 codecs, 10 loader shapes | 200/200 recovered (floor 196) |
 
 Real samples (byte-for-byte stable across releases):
 
@@ -354,10 +354,13 @@ down** from the same layer table and grades them the same way. The gate runs
 eighteen reversible codecs the families use — including base58, base62, base45
 and z85, whose loaders are counting loops rather than one-line calls, so the
 harness generates the same loop a real loader spells out. Each loader is also
-dressed in one of six shapes an obfuscator actually ships: bare, inside a
-`def`, behind a decoy `exec`, and with the loader *itself* stored as string
+dressed in one of ten shapes an obfuscator actually ships: bare, inside a
+`def`, inside a class method called through an instance, behind a decoy `exec`,
+behind `getattr(__import__('builtins'), 'exec')`, behind a dict-dispatch table,
+inside a `while True:` driver, and with the loader *itself* stored as string
 chunks or as reversed lines joined at runtime. Latest run: **200/200
-recovered**, floor **196**, mean depth 8.0. A case that used to be recovered and stops being
+recovered**, floor **196**, mean depth 8.0 — and 100/100 on seeds 6 and 7,
+which the gate never sees. A case that used to be recovered and stops being
 recovered fails the `corpus` gate, so the number can only go up with the code,
 never down with the prose.
 

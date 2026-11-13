@@ -289,7 +289,40 @@ def _namespace_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
             for val in ev.run_function(fndef, values).values():
                 offer(val)
 
+    # a `def` that is never called by name still runs: a class method is invoked
+    # through an instance (`_Loader().run()`), and a loader hidden in a method is
+    # the shape Hyperion ships.  Simulating the body needs no caller - the work is
+    # in the statements, and the only thing a caller adds is arguments.
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not _has_dynamic_sink(node):
+            continue
+        for val in ev.run_function(node, _default_arguments(ev, node)).values():
+            offer(val)
+
     return list(candidates.values())
+
+
+def _default_arguments(ev: Evaluator, fndef: ast.AST) -> list:
+    """Argument values to simulate a body with: the declared defaults, else None."""
+    spec = fndef.args
+    positional = list(getattr(spec, "posonlyargs", [])) + list(spec.args)
+    if positional and positional[0].arg in ("self", "cls"):
+        positional = positional[1:]
+    values = []
+    for param in positional:
+        values.append(None)
+    defaults = list(spec.defaults)
+    for offset, default in enumerate(defaults):
+        index = len(positional) - len(defaults) + offset
+        if index < 0:
+            continue
+        try:
+            values[index] = ev.eval(default).value
+        except (EvalUnsafe, EvalFailed, MarshalPayload):
+            pass
+    return values
 
 
 def _literal_blobs(tree: ast.AST, floor: int = 24) -> list[tuple[bytes, ast.AST]]:
