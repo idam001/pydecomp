@@ -7,6 +7,7 @@ import hashlib
 
 from ..bytecode.magic import MAGIC_VERSIONS_BYTES
 from ..core.util import looks_like_python, to_bytes
+from ..core.values import Val
 from ..eval.evaluator import Evaluator
 from ..exceptions import EvalFailed, EvalUnsafe, MarshalPayload
 from ..limits import EXEC_SINKS, MAX_LAYERS
@@ -97,6 +98,49 @@ class _FoldArithmetic(ast.NodeTransformer):
         return ast.copy_location(ast.Constant(value=out), node)
 
 
+def _sink_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
+    """Every exec/eval/compile() argument this module can resolve statically."""
+    found: list[Payload] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        try:
+            path = ev.dotted(node.func)
+        except EvalUnsafe:
+            continue
+        if path not in EXEC_SINKS and not path.endswith(".exec"):
+            continue
+        if not node.args:
+            continue
+        try:
+            v = ev.eval(node.args[0])
+            data = v.value
+            if isinstance(data, (bytes, bytearray, str)) and data:
+                found.append(Payload(v.recipe, to_bytes(data), "python"))
+        except MarshalPayload as m:
+            if m.data:
+                found.append(Payload(m.recipe + ["marshal"], m.data, "marshal"))
+        except (EvalUnsafe, EvalFailed):
+            continue
+    return found
+
+
+def _constant_folded(source: str) -> str | None:
+    """The same program with its constant expressions evaluated, or None."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+    try:
+        from ..polish.evaluate import fold_expressions
+        if not fold_expressions(tree, {}):
+            return None
+        ast.fix_missing_locations(tree)
+        return ast.unparse(tree)
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
 def _folded_source(source: str) -> str | None:
     """The same program with its arithmetic comprehensions folded, or None."""
     try:
@@ -132,42 +176,35 @@ def find_payloads(source: str) -> list[Payload]:
     ev = Evaluator()
     ev.absorb(tree)
 
-    found: list[Payload] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        try:
-            path = ev.dotted(node.func)
-        except EvalUnsafe:
-            continue
-        if path not in EXEC_SINKS and not path.endswith(".exec"):
-            continue
-        if not node.args:
-            continue
-        try:
-            v = ev.eval(node.args[0])
-            data = v.value
-            if isinstance(data, (bytes, bytearray, str)) and data:
-                found.append(Payload(v.recipe, to_bytes(data), "python"))
-        except MarshalPayload as m:
-            if m.data:
-                found.append(Payload(m.recipe + ["marshal"], m.data, "marshal"))
-        except (EvalUnsafe, EvalFailed):
-            continue
-
+    found: list[Payload] = list(_sink_payloads(tree, ev))
     found.extend(_namespace_payloads(tree, ev))
     found.extend(_marshal_payloads(tree, ev))
     found.extend(_alphabet_payloads(tree))
     found.extend(_xor_comprehension_payloads(tree, ev))
     found.extend(_loop_chain_payloads(tree, ev))
+    # an accumulator leaves what it built in the environment, so the sinks get a
+    # second look with the container's value in hand
+    built = _accumulator_payloads(tree, ev)
+    if built:
+        found.extend(_sink_payloads(tree, ev))
+        found.extend(built)
     if not found:
-        # a mid-chain arithmetic layer: fold it and read the file again
-        folded = _folded_source(source)
-        if folded is not None and folded != source:
+        # a mid-chain arithmetic layer or a constant the loader hid behind a
+        # class body: fold it and read the file again
+        for folded in (_folded_source(source), _constant_folded(source)):
+            if folded is None or folded == source:
+                continue
             try:
-                return find_payloads(folded)
+                recovered = find_payloads(folded)
             except RecursionError:
-                pass
+                recovered = []
+            if recovered:
+                # the fold is what turned the loader into a literal, so the layer
+                # has a provenance even when the folded call has no recipe of its own
+                return [payload if payload.recipe
+                        else Payload(["constant-fold"] + payload.recipe, payload.data,
+                                     payload.kind)
+                        for payload in recovered]
     found.extend(_builtin_uu_payloads(tree))
 
     # prefer a payload that really is source; among those, the biggest, because
@@ -467,6 +504,106 @@ def _loop_chain_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
         except UnicodeDecodeError:
             pass
         del ev.env[name]
+    return found
+
+
+def _grow_shape(statement):
+    """`c.append(x)`, `c.extend(x)` or `c += x` - one way to grow a container."""
+    if isinstance(statement, ast.AugAssign):
+        if isinstance(statement.target, ast.Name) and isinstance(statement.op, ast.Add):
+            return statement.target.id, "add", statement.value
+        return None
+    if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+        call = statement.value
+        if (isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name)
+                and call.func.attr in ("append", "extend") and len(call.args) == 1):
+            return call.func.value.id, call.func.attr, call.args[0]
+    return None
+
+
+def _accumulator_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
+    """Replay `for c in LITERAL: out.append(f(c))` against the literal.
+
+    A payload assembled character by character is the same chain written out one
+    element at a time.  The iterable has to be a value the file already holds, so
+    nothing is guessed and nothing runs.
+    """
+    from ..decoders.emoji import parses_as_python
+
+    found: list[Payload] = []
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.For) or not isinstance(stmt.target, ast.Name):
+            continue
+        shapes = [_grow_shape(inner) for inner in stmt.body]
+        if not shapes or any(shape is None for shape in shapes):
+            continue
+        names = {shape[0] for shape in shapes}
+        if len(names) != 1:
+            continue
+        name = names.pop()
+        start = ev.env.get(name)
+        if start is None or not isinstance(start.value, (bytearray, list, str, bytes)):
+            continue
+        try:
+            movable = ev.eval(stmt.iter)
+        except (EvalUnsafe, EvalFailed, MarshalPayload):
+            continue
+        items = movable.value
+        if not isinstance(items, (list, tuple, bytes, str, bytearray, range)):
+            continue
+        if len(items) > _REPLAY_LIMIT * 4096:
+            continue
+        built = start.value if isinstance(start.value, bytearray) else type(start.value)()
+        if isinstance(built, str):
+            built = ""
+        spent = 0
+        try:
+            for item in items:
+                if isinstance(item, (list, tuple, dict, set)):
+                    raise EvalFailed("element is not a scalar")
+                ev.env[stmt.target.id] = Val(item, ["loop"])
+                for target, method, node in shapes:
+                    piece = ev.eval(node).value
+                    if method == "append":
+                        if isinstance(built, str):
+                            built += str(piece)
+                        else:
+                            built.append(piece)
+                    elif method == "extend":
+                        if isinstance(built, str):
+                            built += str(piece)
+                        else:
+                            built.extend(piece)
+                    else:
+                        built = built + piece
+                spent += len(built)
+                if spent > _REPLAY_BYTES:
+                    raise EvalFailed("replay budget")
+        except (EvalUnsafe, EvalFailed, MarshalPayload, RecursionError, TypeError,
+                ValueError, AttributeError):
+            continue
+        finally:
+            ev.env.pop(stmt.target.id, None)
+        try:
+            if isinstance(built, (bytearray, bytes)):
+                data = bytes(built)
+            elif isinstance(built, list) and built and isinstance(built[0], str):
+                data = "".join(built).encode("utf-8", "surrogateescape")
+            elif isinstance(built, str):
+                data = built.encode("utf-8", "surrogateescape")
+            else:
+                data = bytes(built)
+        except (TypeError, ValueError):
+            continue
+        if not data:
+            continue
+        recipe = list(start.recipe) + ["accumulate"]
+        ev.env[name] = Val(built, recipe)
+        try:
+            if parses_as_python(data.decode("utf-8")):
+                found.append(Payload(recipe, data, "python"))
+        except UnicodeDecodeError:
+            continue
     return found
 
 

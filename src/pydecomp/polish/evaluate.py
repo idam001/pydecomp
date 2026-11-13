@@ -329,6 +329,8 @@ def evaluate(node, env=None, budget=None):
                 return _MODULES[module][node.attr]
             raise Unevaluable(f"{module}.{node.attr}")
         base = evaluate(node.value, env, budget)
+        if isinstance(base, _Namespace) and node.attr in base.values:
+            return base.values[node.attr]
         if node.attr in _METHODS and hasattr(base, node.attr):
             return _BoundMethod(base, node.attr)
         raise Unevaluable("attribute")
@@ -339,6 +341,15 @@ def evaluate(node, env=None, budget=None):
     if isinstance(node, _ast.Call):
         return _call(node, env, budget)
     raise Unevaluable(type(node).__name__)
+
+
+class _Namespace:
+    """A class body seen as nothing but names: `_C._p` is a constant lookup."""
+
+    __slots__ = ("values",)
+
+    def __init__(self, values):
+        self.values = values
 
 
 def _is_module_name(node) -> bool:
@@ -539,6 +550,16 @@ def _comprehension(node, env, budget):
 _SKIP = (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef, _ast.Module,
          _ast.Lambda)
 
+#: methods that change their receiver.  Evaluating one of these is a side effect,
+#: so the folder reads them as statements and never as expressions
+_MUTATORS = frozenset({"append", "extend", "insert", "remove", "pop", "clear",
+                       "add", "discard", "update", "sort", "reverse"})
+
+#: statements that may run zero or many times, so a mutation inside them cannot
+#: be applied once and deleted
+_NESTED = (_ast.For, _ast.AsyncFor, _ast.While, _ast.If, _ast.Try, _ast.With,
+           _ast.AsyncWith)
+
 
 def _literal_node(value):
     try:
@@ -564,6 +585,9 @@ class _Folder(_ast.NodeTransformer):
         self.env = env
         self.budget = budget
         self.folded = 0
+        self.depth = 0
+        self.nested = 0
+        self.root = None
 
     def visit_Call(self, node):                        # noqa: N802
         func = node.func
@@ -595,17 +619,123 @@ class _Folder(_ast.NodeTransformer):
                 shadow.add(sub.id)
         saved = self.env
         self.env = {name: value for name, value in saved.items() if name not in shadow}
+        self.depth += 1
         try:
-            node.body = [self.visit(stmt) for stmt in node.body]
+            node.body = [kept for kept in (self.visit(stmt) for stmt in node.body)
+                         if kept is not None]
         finally:
+            self.depth -= 1
             self.env = saved
         return node
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
+    def visit_ClassDef(self, node):
+        values = {}
+        for stmt in node.body:
+            if (isinstance(stmt, _ast.Assign) and len(stmt.targets) == 1
+                    and isinstance(stmt.targets[0], _ast.Name)):
+                try:
+                    values[stmt.targets[0].id] = evaluate(stmt.value, self.env, self.budget)
+                except (Unevaluable, RecursionError):
+                    continue
+        if values:
+            self.env[node.name] = _Namespace(values)
+        return self.generic_visit(node)
+
+    # a container grown statement by statement, which is how loaders build text
+    def visit_Assign(self, node):
+        node = self.generic_visit(node)
+        if not (len(node.targets) == 1 and isinstance(node.targets[0], _ast.Name)):
+            return node
+        name = node.targets[0].id
+        if self.depth or self.nested:
+            self.env.pop(name, None)
+            return node
+        if name not in self.env:
+            try:
+                value = evaluate(node.value, self.env, self.budget)
+            except (Unevaluable, RecursionError):
+                value = None
+            if isinstance(value, (bytearray, list, dict)):
+                self.env[name] = value
+        return node
+
+    def visit_AugAssign(self, node):
+        if (isinstance(node.target, _ast.Name) and node.target.id in self.env
+                and isinstance(node.op, (_ast.Add, _ast.BitOr, _ast.BitAnd))):
+            if self.depth or self.nested:
+                self.env.pop(node.target.id, None)
+                return self.generic_visit(node)
+            if self._grow(node.target.id, node.op, node.value, node):
+                return None
+        return self.generic_visit(node)
+
+    def visit_Expr(self, node):
+        func = getattr(node.value, "func", None)
+        if (isinstance(func, _ast.Attribute) and isinstance(func.value, _ast.Name)
+                and func.attr in ("append", "extend")):
+            name = func.value.id
+            if name in self.env:
+                if self.depth or self.nested:
+                    self.env.pop(name, None)
+                elif self._grow(name, None, node.value, node, method=func.attr):
+                    return None
+        return self.generic_visit(node)
+
+    def _grow(self, name, op, value_node, statement, method=""):
+        """Apply one mutation to a container the folder is tracking.
+
+        The statement is dropped only when the name is read nowhere else; a name
+        that escapes keeps its statements, and only the environment is updated.
+        """
+        current = self.env.get(name)
+        if not isinstance(current, (bytearray, list, str, bytes)):
+            return False
+        try:
+            argument = evaluate(value_node, self.env, self.budget)
+        except (Unevaluable, RecursionError):
+            return False
+        try:
+            if method == "append":
+                current.append(argument)
+            elif method == "extend":
+                current.extend(argument)
+            elif isinstance(op, _ast.Add):
+                self.env[name] = current + argument
+            elif isinstance(op, _ast.BitOr):
+                self.env[name] = current | argument
+            elif isinstance(op, _ast.BitAnd):
+                self.env[name] = current & argument
+            else:
+                return False
+        except (TypeError, ValueError, AttributeError):
+            return False
+        self.folded += 1
+        return not self._escapes(name, statement)
+
+    def _escapes(self, name, statement) -> bool:
+        for node in _ast.walk(self.root if self.root is not None else statement):
+            if (isinstance(node, _ast.Name) and node.id == name
+                    and isinstance(node.ctx, _ast.Load)):
+                return True
+        return False
+
     def visit(self, node):
+        if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                and node.func.attr in _MUTATORS):
+            node.args = [self.visit(argument) for argument in node.args]
+            return node
         if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
             return self.visit_FunctionDef(node)
+        if isinstance(node, _ast.ClassDef):
+            return self.visit_ClassDef(node)
+        if isinstance(node, _NESTED):
+            self.nested += 1
+            try:
+                return self.generic_visit(node)
+            finally:
+                self.nested -= 1
         if isinstance(node, _SKIP):
             return node
         node = super().visit(node)
@@ -634,7 +764,9 @@ def fold_expressions(tree, env=None) -> int:
     """Collapse every fully-evaluable expression to its value."""
     try:
         folder = _Folder(dict(env or {}), _Budget())
-        tree.body = [folder.visit(stmt) for stmt in tree.body]
+        folder.root = tree
+        tree.body = [kept for kept in (folder.visit(stmt) for stmt in tree.body)
+                     if kept is not None]
         return folder.folded
     except RecursionError:
         return 0
