@@ -281,3 +281,90 @@ def test_prose_is_not_a_payload():
 @pytest.mark.parametrize("blob", [b"", b"\x00" * 8, os.urandom(32)])
 def test_lookalikes_are_rejected(blob):
     assert not looks_like_payload(blob)
+
+
+# --------------------------------------------------------------------------
+# numeric spellings, order-only ciphers, carving
+# --------------------------------------------------------------------------
+
+def test_bytes_spelled_as_numbers_come_back():
+    from pydecomp.plugins.backends.codecs.numeric import (
+        _open_decimal, _open_hex_pairs, _open_json_array, _open_octal)
+
+    numbers = [byte for byte in PAYLOAD]
+    assert _open_decimal(" ".join(map(str, numbers)).encode()) == PAYLOAD
+    assert _open_decimal(", ".join(map(str, numbers)).encode()) == PAYLOAD
+    assert _open_json_array(repr(numbers).encode()) == PAYLOAD
+    assert _open_octal(b" ".join(b"\\%o" % byte for byte in numbers)) == PAYLOAD
+    assert _open_hex_pairs(b"-".join(b"%02x" % byte for byte in numbers)) == PAYLOAD
+
+
+def test_plain_hex_is_not_claimed_by_the_pair_reader():
+    from pydecomp.plugins.backends.codecs.numeric import _open_hex_pairs
+
+    # bare hex belongs to the hex backend; this one only takes a spelled-out form
+    assert _open_hex_pairs(PAYLOAD.hex().encode()) is None
+    assert _open_hex_pairs(b"not hex at all, just words in a row here") is None
+
+
+@pytest.mark.parametrize("rails", [2, 3, 4, 5, 8])
+def test_rail_fence_is_its_own_inverse(rails):
+    from pydecomp.plugins.backends.cipher.transposition import rail_fence_decode
+
+    pattern = list(range(rails)) + list(range(rails - 2, 0, -1))
+    rows: list[list[int]] = [[] for _ in range(rails)]
+    for index, byte in enumerate(PAYLOAD):
+        rows[pattern[index % len(pattern)]].append(byte)
+    written = bytes(byte for row in rows for byte in row)
+    assert rail_fence_decode(written, rails) == PAYLOAD
+
+
+@pytest.mark.parametrize("columns", [2, 3, 7, 16])
+def test_columnar_is_its_own_inverse(columns):
+    from pydecomp.plugins.backends.cipher.transposition import columnar_decode
+
+    rows = [PAYLOAD[index:index + columns] for index in range(0, len(PAYLOAD), columns)]
+    written = bytearray()
+    for column in range(columns):
+        for row in rows:
+            if column < len(row):
+                written.append(row[column])
+    assert columnar_decode(bytes(written), columns) == PAYLOAD
+
+
+def test_a_layer_that_starts_partway_in_is_carved_out():
+    from pydecomp.plugins.backends.containers.carve import _each_carve
+
+    packed = zlib.compress(PAYLOAD)
+    carried = b"\x89PNG-ish banner bytes" + packed
+    assert packed in list(_each_carve(carried))
+    assert list(_each_carve(PAYLOAD)) == []
+
+
+def test_the_step_after_a_candidate_decides_which_candidate_comes_first():
+    from pydecomp.plugins.backends._share import promise
+
+    # base64 of base64 opens twice; the same bytes turned around do not
+    twice = base64.b64encode(base64.b64encode(PAYLOAD))
+    assert promise(twice) > promise(twice[::-1])
+
+
+def test_an_unwritten_buffer_is_not_a_payload():
+    # bytearray(len(_s)) folded to zeros is a container's shape, so the fold may
+    # not report it and must let the backend tree look at the bytes instead
+    packed = base64.b64encode(zlib.compress(PAYLOAD))
+    columns = 7
+    rows = [packed[index:index + columns] for index in range(0, len(packed), columns)]
+    written = bytearray()
+    for column in range(columns):
+        for row in rows:
+            if column < len(row):
+                written.append(row[column])
+    source = ("import os\n"
+              "_columns = int(os.environ.get('PYDECOMP_COLUMNS', '7'))\n"
+              "_s = %r\n"
+              "_rows = -(-len(_s) // _columns)\n"
+              "_out = bytearray(len(_s))\n"
+              "print(_out)\n"
+              "raise SystemExit(0)\n" % bytes(written))
+    assert [item.data for item in find_payloads(source)] == []

@@ -267,6 +267,9 @@ FAMILIES: dict[str, dict] = {
     "bo_backend_xor": {"layers": (), "tail": "backend_xor"},
     "bp_backend_rc4": {"layers": (), "tail": "backend_rc4"},
     "bq_backend_bare_blob": {"layers": (), "tail": "backend_bare"},
+    "br_backend_bits": {"layers": (), "tail": "backend_bits"},
+    "bs_backend_columns": {"layers": (), "tail": "backend_columns"},
+    "bt_backend_numbers": {"layers": (), "tail": "backend_numbers"},
 
 
 }
@@ -653,6 +656,53 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
                   "raise SystemExit(0)\n" % payload_body)
         cooked = raw
         truth_layers = ["base64", "zlib"]
+    elif tail == "backend_bits":
+        inner = base64.b64encode(zlib.compress(raw))
+        bits = "".join(format(byte, "08b") for byte in inner)
+        loader = ("import os\n"
+                  "_width = int(os.environ.get('PYDECOMP_WIDTH', '8'))\n"
+                  "_s = %r\n"
+                  "_b = bytes(int(_s[i:i + _width], 2) for i in range(0, len(_s), _width))\n"
+                  "exec(__import__('zlib').decompress(__import__('base64')"
+                  ".b64decode(_b)))\n" % bits)
+        cooked = raw
+        truth_layers = ["bits", "base64", "zlib"]
+    elif tail == "backend_columns":
+        inner = base64.b64encode(zlib.compress(raw))
+        columns = int(os.environ.get("PYDECOMP_COLUMNS", "7"))
+        rows = [inner[index:index + columns] for index in range(0, len(inner), columns)]
+        transposed = bytearray()
+        for column in range(columns):
+            for row in rows:
+                if column < len(row):
+                    transposed.append(row[column])
+        loader = ("import os\n"
+                  "_columns = int(os.environ.get('PYDECOMP_COLUMNS', '7'))\n"
+                  "_s = %r\n"
+                  "_rows = -(-len(_s) // _columns)\n"
+                  "_short = _rows * _columns - len(_s)\n"
+                  "_out = bytearray(len(_s))\n"
+                  "_at = 0\n"
+                  "for _c in range(_columns):\n"
+                  "    _length = _rows - (1 if _c >= _columns - _short else 0)\n"
+                  "    for _r in range(_length):\n"
+                  "        _out[_r * _columns + _c] = _s[_at]\n"
+                  "        _at += 1\n"
+                  "exec(__import__('zlib').decompress(__import__('base64')"
+                  ".b64decode(bytes(_out))))\n" % bytes(transposed))
+        cooked = raw
+        truth_layers = ["columnar", "base64", "zlib"]
+    elif tail == "backend_numbers":
+        inner = base64.b64encode(zlib.compress(raw))
+        numbers = ", ".join(str(byte) for byte in inner)
+        loader = ("import os\n"
+                  "_sep = os.environ.get('PYDECOMP_SEP', ',')\n"
+                  "_s = %r\n"
+                  "_b = bytes(int(_x) for _x in _s.split(_sep) if _x.strip())\n"
+                  "exec(__import__('zlib').decompress(__import__('base64')"
+                  ".b64decode(_b)))\n" % numbers)
+        cooked = raw
+        truth_layers = ["decimal", "base64", "zlib"]
     elif tail == "zip2":
         inner = os.path.join(folder, ".inner.zip")
         info = zipfile.ZipInfo("payload.py", date_time=(1980, 1, 1, 0, 0, 0))

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+
 B64 = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
 B64URL = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=")
 B32 = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567=")
@@ -80,7 +83,7 @@ CLEAN = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678
 
 def score(blob: bytes) -> float:
     """Evidence, plus how much the bytes read like a codec's own output."""
-    weight = evidence(blob)
+    weight = layer_evidence(blob)
     try:
         text = blob.decode("utf-8")
     except UnicodeDecodeError:
@@ -101,3 +104,53 @@ def rank(candidates, limit: int = 8) -> list[bytes]:
     scored = [(score(candidate), candidate) for candidate in candidates]
     scored.sort(key=lambda pair: -pair[0])
     return [candidate for _weight, candidate in scored[:limit]]
+
+
+def promise(blob: bytes) -> float:
+    """Evidence now, plus half of what the step after it would see.
+
+    Two candidates can read equally like text and still not be equally
+    interesting: base64 of base64 opens into another layer, and the same bytes
+    after rot13 open into noise.  One decode is cheap enough to ask.
+    """
+    score_now = layer_evidence(blob)
+    if score_now >= 1.0 or not blob:
+        return score_now
+    padded = bytes(blob) + b"=" * (-len(blob) % 4)
+    best = 0.0
+    for opener in (lambda data: base64.b64decode(data, validate=False),
+                   lambda data: binascii.unhexlify(data)):
+        try:
+            opened = opener(padded)
+        except Exception:                             # noqa: BLE001
+            continue
+        if opened:
+            best = max(best, layer_evidence(opened))
+    return score_now + 0.5 * best
+
+
+def layer_evidence(blob: bytes) -> float:
+    """Evidence that this candidate is a *layer* - something a decoder can open.
+
+    Printability alone cannot order candidates: a wrong XOR key produces text as
+    readable-looking as the right base64.  What separates them is that the right
+    one opens - base64 whose bytes begin with a zlib header, hex whose bytes do,
+    text that a codec recognises.  This is a ranking hint, never an acceptance.
+    """
+    base = evidence(blob)
+    if base >= 1.0:
+        return 1.6                                    # already a known magic
+    if not blob:
+        return 0.0
+    padded = bytes(blob) + b"=" * (-len(blob) % 4)
+    for opener in (lambda data: base64.b64decode(data, validate=False),
+                   lambda data: binascii.unhexlify(data)):
+        try:
+            opened = opener(padded)
+        except Exception:                             # noqa: BLE001
+            continue
+        if opened and any(opened.startswith(magic) for magic in MAGIC):
+            return 1.5
+    if b"0123456789" in blob[:1] or base < 0.4:
+        return base
+    return base

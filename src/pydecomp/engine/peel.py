@@ -99,6 +99,10 @@ class _FoldArithmetic(ast.NodeTransformer):
         return ast.copy_location(ast.Constant(value=out), node)
 
 
+def _carries_content(data: bytes) -> bool:
+    return bool(data) and data.count(data[0]) != len(data)
+
+
 def _backend_payloads(tree: ast.AST) -> list[Payload]:
     """Last resort: open the module's literals with the plugin tree.
 
@@ -257,6 +261,10 @@ def find_payloads(source: str) -> list[Payload]:
                                      payload.kind)
                         for payload in recovered]
     found.extend(_builtin_uu_payloads(tree))
+    # a buffer that was allocated and never written is a shape, not content:
+    # `bytearray(len(data))` folded to zeros is not a payload, and saying it is
+    # would stop the search before it started
+    found = [payload for payload in found if _carries_content(payload.data)]
     if not found:
         # nothing in the code explains the data: hand the literals to the
         # backend tree and let structure, not the loader, name the layers

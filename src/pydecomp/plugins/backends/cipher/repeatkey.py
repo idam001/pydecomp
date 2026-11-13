@@ -64,6 +64,10 @@ def _solve(blob: bytes, length: int) -> bytes:
 def _each_repeating_key(blob: bytes):
     if len(blob) > 256 << 10:
         return                      # a payload that size is not keyed like this
+    printable = sum(1 for byte in blob[:4096]
+                    if byte in b"\t\n\r" or 32 <= byte <= 126) / min(len(blob), 4096)
+    if printable > 0.98:
+        return                      # this is already text, not a ciphertext
     ceiling = min(MAX_KEY, len(blob) // MIN_COLUMN)
     if ceiling < 2:
         return

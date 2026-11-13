@@ -1,5 +1,5 @@
 {
- "cases": 276,
+ "cases": 288,
  "families": {
   "a_b64": [
    {
@@ -1509,6 +1509,120 @@
    {
     "expect": "recover",
     "layers": [
+     "base64",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "br_backend_bits": [
+   {
+    "expect": "recover",
+    "layers": [
+     "bits",
+     "base64",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "bits",
+     "base64",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "bits",
+     "base64",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "bits",
+     "base64",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bs_backend_columns": [
+   {
+    "expect": "recover",
+    "layers": [
+     "columnar",
+     "base64",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "columnar",
+     "base64",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "columnar",
+     "base64",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "columnar",
+     "base64",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bt_backend_numbers": [
+   {
+    "expect": "recover",
+    "layers": [
+     "decimal",
+     "base64",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "decimal",
+     "base64",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "decimal",
+     "base64",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "decimal",
      "base64",
      "zlib"
     ],

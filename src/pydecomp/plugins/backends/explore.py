@@ -14,9 +14,10 @@ dropped rather than reported.
 from __future__ import annotations
 
 import hashlib
+import heapq
 from dataclasses import dataclass
 
-from ._share import evidence
+from ._share import promise
 from .registry import backends
 from .spec import Budget, Refusal
 
@@ -40,52 +41,65 @@ class Result:
 
 def explore(blob: bytes, accept, depth: int = 4, budget: Budget | None = None,
             width: int = 12) -> Result:
-    """Breadth-first chains from ``blob``; ``accept(data, chain)`` ends a chain.
+    """Chains from ``blob``, expanding the most promising node next.
 
-    Breadth first is deliberate: the shortest chain that survives the check is
-    the one a person would name, and a longer chain through the same bytes is
-    only interesting if the short one failed.
+    A chain is only as interesting as the step that follows it: a candidate whose
+    bytes open into a known layer is worth more than a candidate that merely
+    reads like text, and the wrong XOR key reads like text too.  So the search
+    orders its work by that signal and expands the best node first, which both
+    finds short chains sooner and stops dead branches before they eat the
+    budget.  ``accept(data, chain)`` ends a branch; ``width`` caps how many
+    children of one node are worth queueing.
     """
     budget = budget or Budget()
+    known = sorted(backends(), key=lambda backend: (backend.cost, backend.name))
     hits: list[Hit] = []
     seen = {hashlib.sha256(blob).digest()}
-    frontier: list[tuple[tuple[str, ...], bytes]] = [((), blob)]
+    queue: list[tuple[float, int, int, tuple[str, ...], bytes]] = [
+        (-promise(blob), 0, 0, (), blob)]
+    order = 0
     tried = 0
-    for _level in range(max(0, depth)):
-        if not frontier:
-            break
-        produced: list[tuple[float, tuple[str, ...], bytes]] = []
-        for chain, data in frontier:
-            ranked = sorted(backends(),
-                            key=lambda backend: (-backend.worth_trying(data),
-                                                 backend.cost, backend.name))
-            for backend in ranked:
-                weight = backend.worth_trying(data)
+    while queue:
+        _weight, level, _order, chain, data = heapq.heappop(queue)
+        if level >= max(0, depth):
+            continue
+        children: list[tuple[float, tuple[str, ...], bytes]] = []
+        ranked = sorted(known, key=lambda backend: (-backend.worth_trying(data),
+                                                    backend.cost, backend.name))
+        for backend in ranked:
+            weight = backend.worth_trying(data)
+            if weight <= 0.0:
+                continue
+            # a 255-key scan in the middle of a chain is a rare shape: past the
+            # first step, search the expensive backends only when the blob says
+            # what it is
+            if level and backend.cost >= 3 and weight < 0.8:
+                continue
+            try:
+                budget.spend(backend.cost + 1)
+            except Refusal:
+                return Result(_shortest(hits), True, tried)
+            tried += 1
+            for out in backend.candidates(data):
+                digest = hashlib.sha256(out).digest()
+                if digest in seen:
+                    continue
+                seen.add(digest)
+                step = chain + (backend.name,)
+                if accept(out, step):
+                    hits.append(Hit(step, out))
+                    continue          # a payload is a leaf
+                weight = promise(out)
                 if weight <= 0.0:
-                    continue
-                # a 255-key scan in the middle of a chain is a rare shape: after
-                # the first step, only search the expensive backends when the
-                # blob itself says what it is
-                if _level and backend.cost >= 3 and weight < 0.8:
-                    continue
-                try:
-                    budget.spend(backend.cost + 1)
-                except Refusal:
-                    return Result(tuple(hits), True, tried)
-                tried += 1
-                for out in backend.candidates(data):
-                    digest = hashlib.sha256(out).digest()
-                    if digest in seen:
-                        continue
-                    seen.add(digest)
-                    step = chain + (backend.name,)
-                    if accept(out, step):
-                        hits.append(Hit(step, out))
-                        continue      # a payload is a leaf: nothing decodes it further
-                    weight = evidence(out)
-                    if weight <= 0.0:
-                        continue      # noise does not get another step
-                    produced.append((weight, step, out))
-        produced.sort(key=lambda item: -item[0])
-        frontier = [(step, out) for _weight, step, out in produced[:width]]
-    return Result(tuple(hits), False, tried)
+                    continue          # noise does not get another step
+                children.append((weight, step, out))
+        children.sort(key=lambda item: -item[0])
+        for weight, step, out in children[:width]:
+            order += 1
+            heapq.heappush(queue, (-weight, level + 1, order, step, out))
+    return Result(_shortest(hits), False, tried)
+
+
+def _shortest(hits: list[Hit]) -> tuple[Hit, ...]:
+    """The chain a person would name is the shortest one that works."""
+    return tuple(sorted(hits, key=lambda hit: (len(hit.chain), hit.chain)))
