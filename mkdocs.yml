@@ -57,6 +57,7 @@ nav:
       - Layers and containers: layers.md
       - Bytecode engine: bytecode.md
       - Expression evaluator: evaluator.md
+      - The symbolic domain: symbolic.md
   - Reference:
       - API: api.md
       - Native and ELF: native.md

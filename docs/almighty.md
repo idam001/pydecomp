@@ -20,8 +20,8 @@ is a transformation of data the tool already holds: text, bytecode, or bytes.
 | Hyperion | payload in `__code__`, buried under a class and junk `try/except` | `decoders/hyperion.py` recovers the literal (or joins the ordinal tuple) back into source |
 | pyobfuscate.com (paid) | base85 → PBKDF2-SHA256 × 1,000,000 → AES-GCM | `decoders/pyobfuscate_com.py` derives the same key offline and decrypts |
 | String tables (obfuscator.io ported to Python) | every literal moves into one array, an accessor indexes it through an offset, and the array is rotated at import time | `polish/strarrays.py` replays the rotation, resolves the offset and the decode chain, and inlines the strings |
-| Mixed boolean arithmetic (MBA) | `a + b` is written `(a ^ b) + 2 * (a & b)` | `polish/mba.py` — nine identities, each *proved* over a grid of integers before it is allowed to rewrite |
-| Opaque predicates | `if x * x >= 0:` guards the real code, `x * x < 0` guards junk | `polish/opaque.py` decides the predicate with a bounded integer interpreter and deletes the branch that never runs |
+| Mixed boolean arithmetic (MBA) | `a + b` is written `(a ^ b) + 2 * (a & b)` | `symbolic/` — a library of proved integer identities (105 on this build), each proved over a grid of integers before it is allowed to rewrite; `polish/mba.py` is the entry point the fixed-point driver calls |
+| Opaque predicates | `if x * x >= 0:` guards the real code, `x * x < 0` guards junk | `polish/opaque.py` decides the predicate with a bounded integer interpreter; `symbolic/exec.py` decides the polynomial guards (every residue modulo *m* covers the whole line) and deletes the branch that never runs |
 | Unicode aliasing | `ᐁ = alias`, then a wall of `ᐁ(...)` | `polish/aliases.py` resolves the binding, transliterates the identifier, and prints a legend |
 | Dynamic builtin lookup | `getattr(__builtins__, 'ev'+'al')`, `vars()['__builtins__']['exec']`, `__import__('base64').b64decode` | folded to `eval`, `exec` and `base64.b64decode` |
 | Self-hosting | `exec(unparse(fix_missing_locations(eval(__doc__))))` — the program is the docstring | the docstring is parsed and becomes the recovered body |

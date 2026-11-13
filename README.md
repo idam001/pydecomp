@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-31 gates, plus 372 unit tests:
+31 gates, plus 392 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -442,13 +442,14 @@ src/pydecomp/          engine (75 modules + 15 package inits, ~14.2k lines)
   bytecode/          marshal reader, disassembler, opcodes, lifters, decompiler6
   lift/              module-level rebuild, import repair, hoisting
   polish/            demangle, dead code, folding, control-flow unflattening
+  symbolic/          integer domain, proved identity library, executor
   triage/            fingerprints, behaviour hints, risk indicators
   output/            writer, report renderer, signature
   terminal/          banner, panels, colour, animation, menu
   native/            Cython/ELF sidecar (option 2/3 front-end)
 tests/               unit, integration gates, benchmarks, fixtures
 tools/               build_single, run_gates, gen_opcode_tables, fixtures, release
-docs/                mkdocs site (13 pages)
+docs/                mkdocs site (26 pages)
 examples/            runnable examples and their expected output
 ```
 

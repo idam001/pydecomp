@@ -67,7 +67,7 @@
   {
     "case": "06_opaque_dead",
     "rc": 0,
-    "bytes": 741,
+    "bytes": 385,
     "rebuilt_source": true,
     "compiles": true,
     "secret": true,

@@ -155,7 +155,7 @@ print(_g(0))
 # arithmetic and control-flow dressing
 # ---------------------------------------------------------------------------
 
-@check("mba: nine identities collapse to plain arithmetic")
+@check("mba: mixed arithmetic collapses to plain arithmetic")
 def _mba():
     expressions = [
         ("(a ^ b) + 2 * (a & b)", "a + b"),

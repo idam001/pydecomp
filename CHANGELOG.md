@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The arithmetic rules stopped being a list and became a proof
+
+Mixed boolean arithmetic was undone by nine rules hand-written next to the pass
+that used them, checked against the same grid the pass carried. That is a rule
+table: one wrong entry silently changes what the decompiled program computes.
+The rules now live in `pydecomp.symbolic`, and none of them is installed until it
+has been proved.
+
+- **A real domain.** `symbolic/domain.py` holds `SymConst`, `SymUnknown` and
+  `SymExpr`, with `from_ast`/`to_ast` round-tripping through the AST and
+  `evaluate` interpreting over the integers. Unary `-` lifts to its own operator,
+  so a two-argument rule can never capture it.
+- **A proved library.** 84 candidate rules, each evaluated over a grid of
+  integers that includes negatives, zero, powers of two and a byte-wide mask:
+  **105 identities installed, 10 rejected**. The rejected ones are the rules
+  that look right and are not - `(x & y) <= x` fails for negative `x`, so it is
+  dropped, and nothing hand-promotes it back. `tests/unit/test_symbolic.py`
+  re-proves every installed rule independently of the prover that installed it.
+- **Rewriting that always reduces.** The library holds a few relations in both
+  directions on purpose, because both halves are true. The rewriter accepts a
+  rewrite only when it makes the tree strictly smaller, or the same size and
+  earlier in a fixed ordering - one normal form, finite loop, no rule needing to
+  be declared "the forward one".
+- **Polynomial guards decided by residue, not by sampling.** A guard that is a
+  polynomial in its unknown is checked at every residue modulo *m*, which covers
+  the whole line: `(x ** 3 - x) % 3 != 0` is proved false, so `return -1` goes.
+  A guard that varies stays exactly where it was.
+- **Ordinary source is left alone.** An expression is eligible for the rewriter
+  only when it uses a bitwise or shift operator and its leaves are plain names
+  and integers. `x * 2` is not restyled to `x << 1`; `obj.attr + f(a)` is not
+  touched at all.
+- `polish/mba.py` keeps its entry point and its contract (a change count) and
+  loses its private prover; the fixed-point driver now also gets branch pruning
+  out of the same visit.
+
+Measured on this checkout: **392 unit tests**, `almighty` gate green, **31/31
+gates**, single file 418,272 B. Docs: [docs/symbolic.md](docs/symbolic.md).
+
 ### Six of the seven ways to spell `exec` were invisible
 
 A research pass over current Python loader tricks turned up the obvious one this
