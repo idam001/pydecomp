@@ -2,10 +2,36 @@
 from __future__ import annotations
 
 from ..bytecode.codeobj import CodeObj
-from ..bytecode.opcodes.tables import BINARY_SYMS, COMPARE_SYMS, OPNAMES
+from ..bytecode.opcodes.tables import (BINARY_SYMS, COMPARE_SYMS, compare_table,
+                                       jump_kind, table_for)
+
+def _jump_target(version: tuple, off: int, opname: str, arg: int) -> int:
+    """Absolute offset a jump lands on, by that version's own convention.
+
+    Three conventions are in play, and which one applies is read from the
+    release's own opcode listing rather than guessed from the name:
+
+    * up to 3.10, ``hasjabs`` opcodes name an absolute address in code units and
+      ``hasjrel`` ones count from the end of their own instruction;
+    * 3.11 made every jump relative;
+    * 3.13 measures from the end of the instruction that follows instead - two
+      bytes further - which is checked against the interpreter.
+
+    The third rule is the one no opcode table states: it lives in the eval loop,
+    so ``tests/unit/test_ir.py`` compares every target with ``dis``.
+    """
+    if version < (3, 11):
+        if jump_kind(version, opname) == "absolute":
+            return arg * 2
+        return off + 2 + arg * 2
+    pad = 2 if version >= (3, 13) else 0
+    if "BACKWARD" in opname:
+        return off + 2 + pad - arg * 2
+    return off + 2 + pad + arg * 2
+
 
 def disassemble(code: CodeObj, version: tuple):
-    names = OPNAMES.get(version) or OPNAMES.get((3, 14), {})
+    names = table_for(version)
     consts, nm, vars_ = code.consts, code.names, code.varnames
     raw = code.code
     extended = 0
@@ -49,27 +75,29 @@ def disassemble(code: CodeObj, version: tuple):
         elif opname == "BINARY_OP":
             text = BINARY_SYMS.get(arg, str(arg))
         elif opname == "COMPARE_OP":
-            # 3.12 packs flags in the low 4 bits, 3.13+ in the low 5 bits;
-            # verified against a real `a == b` compile for each table we ship.
-            if version >= (3, 13):
-                idx = arg >> 5
-            elif version >= (3, 12):
-                idx = arg >> 4
+            table = compare_table(version)
+            if table and version < (3, 12):
+                # 3.8-3.11 index the release's own cmp_op list, which on 3.8
+                # also holds `in`, `is` and `exception match`
+                text = table[arg] if arg < len(table) else f"cmp({arg})"
             else:
-                idx = arg
-            if idx >= len(COMPARE_SYMS):
-                idx = arg & 0x0F
-            text = COMPARE_SYMS[idx] if idx < len(COMPARE_SYMS) else f"cmp({arg})"
+                # 3.12 packs flags in the low 4 bits, 3.13+ in the low 5 bits;
+                # verified against a real `a == b` compile on each interpreter
+                if version >= (3, 13):
+                    idx = arg >> 5
+                elif version >= (3, 12):
+                    idx = arg >> 4
+                else:
+                    idx = arg
+                if idx >= len(COMPARE_SYMS):
+                    idx = arg & 0x0F
+                text = COMPARE_SYMS[idx] if idx < len(COMPARE_SYMS) else f"cmp({arg})"
         elif opname == "IS_OP":
             text = "is not" if arg else "is"
         elif opname == "CONTAINS_OP":
             text = "not in" if arg else "in"
-        elif "JUMP" in opname or opname in ("FOR_ITER", "SEND"):
-            # 3.13 measures a jump from the end of the instruction that follows
-            # it - two bytes further than 3.12 did.  Checked against the
-            # interpreter for forward and backward edges, plain and fused.
-            pad = 2 if version >= (3, 13) else 0
-            text = (f"to {off + 2 + pad - arg * 2}" if "BACKWARD" in opname
-                    else f"to {off + 2 + pad + arg * 2}")
+        elif "JUMP" in opname or opname in ("FOR_ITER", "SEND") \
+                or opname.startswith("SETUP_"):
+            text = f"to {_jump_target(version, off, opname, arg)}"
         yield off, opname, arg, text
         off += 2

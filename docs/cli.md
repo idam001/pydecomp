@@ -19,6 +19,7 @@ file and writes one output file (plus reports when asked).
 | `--native` | auto | Force the Cython/native front-end (option 2). |
 | `--elf` | auto | Force the ELF payload front-end (option 3). |
 | `--mode MODE` | `auto` | `auto`, `cython`, `elf` or `script`. |
+| `--legacy` | off | Use the stack engine alone and skip the SSA pipeline. |
 | `--selftest` | — | Check the install end to end. |
 | `--version` | — | Print the version. |
 | `-h, --help` | — | Usage. |

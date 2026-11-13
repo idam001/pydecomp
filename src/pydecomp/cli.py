@@ -116,8 +116,14 @@ def main(argv: list[str] | None = None) -> int:
                          "identical output for clean files")
     ap.add_argument("--deep", action="store_true",
                     help="spend more time: deeper decoder chains, more XOR keys")
+    ap.add_argument("--legacy", action="store_true",
+                    help="use the stack engine alone, skipping the SSA pipeline")
     ap.add_argument("--version", action="version", version=f"pydecomp {__version__}")
     args = ap.parse_args(argv)
+
+    if getattr(args, "legacy", False):
+        from .lift.module import ENGINE_SWITCH
+        ENGINE_SWITCH["ssa"] = False
 
     global USE_COLOR, INTERACTIVE
     if args.no_color:

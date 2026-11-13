@@ -177,6 +177,18 @@ class Emitter:
             return self.expr(tree[1])
         if kind == "build" and tree[1] == "str":
             return ast.JoinedStr(values=[self.expr(item) for item in tree[2]])
+        if kind == "call_star":
+            _, callable_, args_value, mapping = tree
+            args = []
+            if isinstance(args_value.expr, tuple) and args_value.expr[0] == "build" \
+                    and args_value.expr[1] == "tuple":
+                args = [self.expr(item) for item in args_value.expr[2]]
+            else:
+                args = [ast.Starred(value=self.expr(args_value), ctx=ast.Load())]
+            keywords = []
+            if mapping is not None:
+                keywords = [ast.keyword(arg=None, value=self.expr(mapping))]
+            return ast.Call(func=self.expr(callable_), args=args, keywords=keywords)
         if kind == "call":
             _, callable_, args, kwargs = tree
             return ast.Call(func=self.expr(callable_),
@@ -244,6 +256,9 @@ class Emitter:
             if value.source == "const" and value.const is None:
                 return ast.Return(value=None)
             return ast.Return(value=self.expr(value))
+        if op == "SETUP":
+            (name,) = instr.args
+            raise Unsupported(f"3.8 block region {name}")
         if op == "DELETE":
             return None                                  # `del x` is not observable here
         if op == "STORE_ATTR":
@@ -284,6 +299,16 @@ class Emitter:
             if block_here is not None and current not in self.consumed \
                     and any(i.op == "FOR_ITER" for i in block_here.instructions):
                 loop = self.for_loop(current)
+                if loop is not None:
+                    out.extend(loop)
+                    current = self.loop_exit
+                    self.loop_exit = None
+                    if current is None:
+                        return out
+                    continue
+            if block_here is not None and current not in self.consumed \
+                    and current in self.loops and len(block_here.successors) == 2:
+                loop = self.while_loop_at_head(current)
                 if loop is not None:
                     out.extend(loop)
                     current = self.loop_exit
@@ -439,6 +464,49 @@ class Emitter:
             seen.add(bid)
             stack.extend(self.fir.blocks[bid].successors)
         return seen
+
+    def while_loop_at_head(self, head: int):
+        """`while test:` where the test block is itself the loop head.
+
+        3.8-3.10 have no separate guard: the test opens the loop, the body ends
+        with an absolute jump back to it, and POP_BLOCK closes the region.
+        """
+        block = self.fir.blocks[head]
+        terminator = None
+        for instr in reversed(block.instructions):
+            if instr.op == "BRANCH":
+                terminator = instr
+                break
+        if terminator is None or len(block.successors) != 2:
+            return None
+        cond, kind = terminator.args
+        exits = [s for s in block.successors if head not in self._reach(s)]
+        if len(exits) != 1:
+            return None
+        outside = exits[0]
+        inside = [s for s in block.successors if s != outside][0]
+        tails = [tail for tail, edge_head in self.fir.back_edges()
+                 if edge_head == head]
+        if not tails:
+            return None
+        header_statements: list[ast.stmt] = []
+        for instr in block.instructions:
+            if instr.op in ("BRANCH", "JUMP"):
+                continue
+            stmt = self.statement(instr)
+            if stmt is not None:
+                header_statements.append(stmt)
+        body = self._loop_body(inside, outside, tails, head=head)
+        test = self.expr(cond)
+        if kind == "if_none":
+            test = ast.Compare(left=test, ops=[ast.IsNot()],
+                               comparators=[ast.Constant(value=None)])
+        elif kind == "if_not_none":
+            test = ast.Compare(left=test, ops=[ast.Is()],
+                               comparators=[ast.Constant(value=None)])
+        self.loop_exit = outside
+        return header_statements + [
+            ast.While(test=test, body=body or [ast.Pass()], orelse=[])]
 
     def for_loop(self, head: int):
         """`for name in iterable:` from a block that ends with FOR_ITER."""

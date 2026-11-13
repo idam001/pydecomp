@@ -45,7 +45,14 @@ def emit_ir(code, version: tuple) -> tuple[str | None, str]:
 
 
 def lift_module_ir(code, version: tuple) -> tuple[str | None, dict]:
-    """The module as source, but only when the SSA text is instruction-identical."""
+    """The module as source from the SSA form, with the grade it earned.
+
+    The text comes back whenever the IR and the emitter could produce it; the
+    report says what it graded at, and :func:`lift` decides whether that beats
+    what the stack engine produced.  Same-version text has to be
+    instruction-identical to be worth anything; from another version there is no
+    second interpreter here to diff against, so the grade is the evidence.
+    """
     report: dict = {"engine": "ssa-ir", "blocks": 0, "values": 0, "loops": 0,
                     "tier": "none", "detail": ""}
     size = len(getattr(code, "code", b"") or b"")
@@ -78,12 +85,25 @@ def lift_module_ir(code, version: tuple) -> tuple[str | None, dict]:
         return None, report
     grade = tiers.grade(text, code, version)
     report["tier"] = grade
-    if grade != "semantic":
+    same_version = tuple(version[:2]) == tuple(tiers.host_version()[:2])
+    if same_version and grade != "semantic":
         report["detail"] = "emitted text is not instruction-identical"
         return None, report
+    if not same_version and not compiles(text):
+        report["detail"] = "emitted text does not compile"
+        return None, report
     report["detail"] = f"{len(text):,} chars, {stats['blocks']} blocks, " \
-                       f"{stats['values']} values, {stats['loops']} loop edge(s)"
+                       f"{stats['values']} values, {stats['loops']} loop edge(s), " \
+                       f"graded {grade}"
     return text, report
+
+
+def compiles(text: str) -> bool:
+    try:
+        compile(text, "<ir>", "exec")
+    except (SyntaxError, ValueError, TypeError):
+        return False
+    return True
 
 
 def available() -> str:

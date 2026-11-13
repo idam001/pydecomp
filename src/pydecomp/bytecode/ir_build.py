@@ -29,13 +29,35 @@ from ..bytecode.ir import BasicBlock, FunctionIR, IRInstr, SSAValue
 #: opcodes that carry no meaning for the IR
 _TRANSPARENT = {"RESUME", "NOP", "CACHE", "EXTENDED_ARG", "PRECALL", "PUSH_NULL",
                 "TO_BOOL", "INSTRUMENTED_", "SETUP_CLEANUP", "END_FOR",
-                "END_SEND", "POP_ITER",
+                "END_SEND", "POP_ITER", "POP_BLOCK", "SETUP_LOOP",
                 "MAKE_CELL", "COPY_FREE_VARS", "NOT_TAKEN", "RETURN_GENERATOR",
                 "POP_BLOCK", "SETUP_ANNOTATIONS", "GEN_START", "INSTRUMENTED_RESUME"}
 
 #: binary operator names, by the symbol the disassembler prints
 _AUGMENTED = {"+=", "-=", "*=", "/=", "//=", "%=", "**=", "<<=", ">>=", "&=",
               "|=", "^=", "@="}
+
+#: 3.8-3.10 spell every operator as its own opcode instead of packing the
+#: operator number into BINARY_OP; the IR wants the symbol either way
+_LEGACY_BINOPS = {
+    "BINARY_ADD": "+", "BINARY_SUBTRACT": "-", "BINARY_MULTIPLY": "*",
+    "BINARY_TRUE_DIVIDE": "/", "BINARY_FLOOR_DIVIDE": "//", "BINARY_MODULO": "%",
+    "BINARY_POWER": "**", "BINARY_LSHIFT": "<<", "BINARY_RSHIFT": ">>",
+    "BINARY_AND": "&", "BINARY_OR": "|", "BINARY_XOR": "^",
+    "BINARY_MATRIX_MULTIPLY": "@",
+    "INPLACE_ADD": "+=", "INPLACE_SUBTRACT": "-=", "INPLACE_MULTIPLY": "*=",
+    "INPLACE_TRUE_DIVIDE": "/=", "INPLACE_FLOOR_DIVIDE": "//=",
+    "INPLACE_MODULO": "%=", "INPLACE_POWER": "**=", "INPLACE_LSHIFT": "<<=",
+    "INPLACE_RSHIFT": ">>=", "INPLACE_AND": "&=", "INPLACE_OR": "|=",
+    "INPLACE_XOR": "^=", "INPLACE_MATRIX_MULTIPLY": "@=",
+}
+
+#: block-stack machinery.  3.8 pushes a block for a loop, a `try`, a `finally`
+#: or a `with`; the IR records the region so the emitter can name what it is
+#: looking at, and refuses the ones that need an exception table it never sees.
+_BLOCK_REGIONS = {"SETUP_EXCEPT", "SETUP_FINALLY", "SETUP_WITH", "SETUP_ASYNC_WITH",
+                  "BEGIN_FINALLY", "END_FINALLY", "WITH_CLEANUP_START",
+                  "WITH_CLEANUP_FINISH", "RERAISE", "POP_EXCEPT"}
 
 #: comparison symbols the disassembler can print
 _COMPARES = {"<", "<=", "==", "!=", ">", ">="}
@@ -98,6 +120,12 @@ class Builder:
                     blocks.append(current)
                 current = []
             current.append(row)
+            if opname in _BLOCK_REGIONS or opname.startswith("SETUP_"):
+                # the target is the handler (or the loop's end): both are leaders
+                target = self._jump_target(off, opname, text)
+                if target is not None:
+                    pending_leaders.add(target)
+                pending_leaders.add(rows[index + 1][0] if index + 1 < len(rows) else -1)
             if opname.startswith("JUMP") or opname.startswith("POP_JUMP") \
                     or opname == "FOR_ITER" or opname == "SEND":
                 target = self._jump_target(off, opname, text)
@@ -321,6 +349,18 @@ class Builder:
                 else:
                     # END_FOR has already taken the exhausted iterator
                     block.add(IRInstr("POP", (None,), None, off))
+            elif opname == "LOAD_SMALL_INT":
+                # 3.14 pushes small integers without a constant-table entry
+                push(fir.value("const", type_hint="int", const=arg))
+            elif opname in _LEGACY_BINOPS:
+                symbol = _LEGACY_BINOPS[opname]
+                right, left = pop(), pop()
+                if symbol.endswith("="):
+                    push(fir.value("expr", expr=("inplace", symbol[:-1], left, right)))
+                    continue
+                value = fir.value("expr", expr=("binop", symbol, left, right))
+                block.add(IRInstr("BINOP", (left, right), value, off))
+                push(value)
             elif opname == "BINARY_OP":
                 right, left = pop(), pop()
                 sym = text
@@ -359,7 +399,12 @@ class Builder:
                 symbol = {"UNARY_NOT": "not", "UNARY_INVERT": "~",
                           "UNARY_POSITIVE": "+"}[opname]
                 push(fir.value("expr", expr=("unary", symbol, node)))
-            elif opname in ("LOAD_ATTR", "LOAD_METHOD", "LOAD_SUPER_ATTR"):
+            elif opname == "LOAD_METHOD":
+                # 3.8-3.10 push the bound method and its receiver as two values;
+                # the IR keeps them as one reference so the call reads as a call
+                owner = pop()
+                push(fir.value("expr", expr=("attr", owner, text)))
+            elif opname in ("LOAD_ATTR", "LOAD_SUPER_ATTR"):
                 owner = pop()
                 value = fir.value("expr", expr=("attr", owner, text.lstrip(".")))
                 block.add(IRInstr("LOAD_ATTR", (owner,), value, off))
@@ -415,6 +460,42 @@ class Builder:
                     stack.pop(-1)                       # replace, not append
                 else:
                     raise Unsupported("LIST_EXTEND without a literal list")
+            elif opname in ("CALL_FUNCTION", "CALL_METHOD", "CALL_FUNCTION_KW",
+                            "CALL_FUNCTION_EX") and self.version < (3, 11):
+                keywords: list = []
+                if opname == "CALL_FUNCTION_EX":
+                    mapping = pop() if arg & 1 else None
+                    args_value = pop()
+                    callable_ = pop()
+                    value = fir.value("call_result",
+                                      expr=("call_star", callable_, args_value, mapping))
+                    block.add(IRInstr("CALL", (callable_, args_value), value, off))
+                    push(value)
+                    continue
+                kwnames = None
+                if opname == "CALL_FUNCTION_KW":
+                    key_value = pop()
+                    if key_value.source != "const" or not isinstance(key_value.const, tuple):
+                        raise Unsupported("computed keyword names")
+                    kwnames = key_value.const
+                    count = arg
+                else:
+                    count = arg
+                args: list = [pop() for _ in range(count)]
+                args.reverse()
+                callable_ = pop()
+                if opname == "CALL_METHOD":
+                    # LOAD_METHOD pushed (method, self); the self is the first
+                    # argument of the call, not a separate value
+                    pass
+                if kwnames:
+                    split = len(args) - len(kwnames)
+                    keywords = list(zip(kwnames, args[split:]))
+                    args = args[:split]
+                value = fir.value("call_result",
+                                  expr=("call", callable_, tuple(args), tuple(keywords)))
+                block.add(IRInstr("CALL", tuple([callable_] + args), value, off))
+                push(value)
             elif opname in ("CALL", "CALL_FUNCTION", "CALL_FUNCTION_KW",
                             "CALL_METHOD", "CALL_KW", "CALL_FUNCTION_EX"):
                 count = arg
@@ -432,7 +513,10 @@ class Builder:
                 push(value)
             elif opname == "MAKE_FUNCTION":
                 flags = arg & 0x0F if arg else 0
-                qualname = pop() if flags & 0x08 else None
+                modern = self.version >= (3, 11)
+                qualname = pop() if modern and flags & 0x08 else None
+                if not modern:
+                    flags = 0                    # 0x08 means closure here, not name
                 code_value = pop()
                 if qualname is not None and qualname.source != "const":
                     raise Unsupported("computed function name")
@@ -509,6 +593,22 @@ class Builder:
                 env[self._varname(first)] = left
                 block.add(IRInstr("STORE", (right, self._varname(second)), None, off))
                 block.add(IRInstr("STORE", (left, self._varname(first)), None, off))
+            elif opname in ("ROT_TWO", "ROT_THREE", "ROT_FOUR", "ROT_N",
+                            "DUP_TOP", "DUP_TOP_TWO"):
+                if opname == "DUP_TOP":
+                    push(stack[-1])
+                elif opname == "DUP_TOP_TWO":
+                    push(stack[-2])
+                    push(stack[-1])
+                elif opname == "ROT_N":
+                    if arg > len(stack):
+                        raise Unsupported("ROT_N past the stack")
+                    stack[-arg:] = stack[-1:] + stack[-arg:-1]
+                else:
+                    depth = {"ROT_TWO": 2, "ROT_THREE": 3, "ROT_FOUR": 4}[opname]
+                    if depth > len(stack):
+                        raise Unsupported(f"{opname} past the stack")
+                    stack[-depth:] = stack[-1:] + stack[-depth:-1]
             elif opname in ("COPY", "SWAP"):
                 if opname == "COPY":
                     if arg > len(stack):
@@ -518,6 +618,8 @@ class Builder:
                     if arg > len(stack):
                         raise Unsupported("SWAP past the stack")
                     stack[-1], stack[-arg] = stack[-arg], stack[-1]
+            elif opname in _BLOCK_REGIONS:
+                block.add(IRInstr("SETUP", (opname,), None, off))
             else:
                 raise Unsupported(opname)
         return env, tuple(stack)

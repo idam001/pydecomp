@@ -20,8 +20,30 @@ malformed stream raises a caught error instead of a segfault-level surprise.
 
 ## Opcode tables
 
-`pydecomp/bytecode/opcodes/tables.py` holds one `NAME=value` line per version.
-CI validates them three ways (`tools/gen_opcode_tables.py --check`):
+`pydecomp/bytecode/opcodes/tables.py` holds one table per version, and every
+number in it is read from the release it belongs to rather than remembered:
+
+```console
+$ python3 tools/fetch_opcode_tables.py --show
+  3.8: 120 opcodes from opcode.py  (6 relative, 5 absolute jumps, 12 comparisons)
+  3.9: 119 opcodes from opcode.py  (5 relative, 6 absolute jumps, 6 comparisons)
+  3.10: 127 opcodes from opcode.py  (5 relative, 6 absolute jumps, 6 comparisons)
+  3.11: 110 opcodes from opcode.py  (15 relative, 0 absolute jumps, 6 comparisons)
+  3.12: 129 opcodes from opcode.py  (9 relative, 0 absolute jumps, 6 comparisons)
+  3.13: 150 opcodes from _opcode_metadata.py  (17 relative, 0 absolute jumps)
+  3.14: 154 opcodes from _opcode_metadata.py  (19 relative, 0 absolute jumps)
+  3.15: 154 opcodes from _opcode_metadata.py  (19 relative, 0 absolute jumps)
+```
+
+Each release contributes three facts, and the decoder needs all three:
+
+| fact | why it matters |
+|---|---|
+| the table | `LOAD_CONST` is 100 on 3.10 and 82 on 3.14 |
+| relative vs absolute jumps | 3.8's `FOR_ITER` counts from its own instruction while its `JUMP_IF_FALSE_OR_POP` names an address |
+| the comparison list | before 3.12 `COMPARE_OP`'s operand indexes `cmp_op`, and 3.8's list also reaches `in`, `is` and `exception match` |
+
+`tools/gen_opcode_tables.py --check` validates what is committed three ways:
 
 1. coherence — no duplicates, no values outside a byte;
 2. drift — an opcode that moves between versions must be in
@@ -29,6 +51,8 @@ CI validates them three ways (`tools/gen_opcode_tables.py --check`):
 3. ground truth — for the running interpreter, the table must equal
    `dis.opmap` exactly (excluding `INSTRUMENTED_*` and pseudo-instructions
    above 255, which never appear in a real `.pyc`).
+
+Regenerate rather than edit: `python3 tools/fetch_opcode_tables.py --write`.
 
 ## Lifting
 

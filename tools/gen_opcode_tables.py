@@ -36,11 +36,15 @@ KNOWN_RENUMBERED = {
     "SEND", "JUMP_BACKWARD", "BEFORE_ASYNC_WITH", "ASYNC_GEN_WRAP", "BINARY_SUBSCR",
     "LOAD_ATTR", "STORE_ATTR", "COMPARE_OP", "IS_OP", "CONTAINS_OP", "COPY",
     "SWAP", "LIST_APPEND", "SET_ADD", "MAP_ADD", "BUILD_STRING", "FORMAT_VALUE",
+    # 3.11 moved the cell, exception and pattern-matching families into the
+    # space the old block-stack opcodes had left empty
+    "DELETE_DEREF", "GET_AWAITABLE", "LOAD_CLOSURE", "LOAD_DEREF", "MATCH_CLASS",
+    "RERAISE", "STORE_DEREF",
 }
 
 # 3.13 rearranged the whole opcode space (specialised families were folded into
 # the base table), so numbers across that boundary are not comparable at all.
-RENUMBERED_BOUNDARIES = {("3.12", "3.13"), ("3.13", "3.14")}
+RENUMBERED_BOUNDARIES = {("3.12", "3.13"), ("3.13", "3.14"), ("3.14", "3.15")}
 
 LIMIT = 2 ** 8          # opcodes are a byte, even with EXTENDED_ARG folding
 
@@ -55,6 +59,25 @@ def load_tables() -> dict[str, dict[str, int]]:
             break
     else:
         raise SystemExit("_OPCODE_TEXT not found in tables.py")
+
+    # a version may inherit another version's table by a plain assignment
+    # (`_OPCODE_TEXT["3.15"] = _OPCODE_TEXT["3.14"]`); follow those aliases so
+    # the checker sees every version the runtime actually serves
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Subscript):
+            continue
+        target = node.targets[0]
+        if not (isinstance(target, ast.Subscript)
+                and getattr(target.value, "id", "") == "_OPCODE_TEXT"):
+            continue
+        inherited = node.value
+        if not (isinstance(inherited, ast.Subscript)
+                and getattr(inherited.value, "id", "") == "_OPCODE_TEXT"):
+            continue
+        try:
+            raw[ast.literal_eval(target.slice)] = raw[ast.literal_eval(inherited.slice)]
+        except (KeyError, ValueError):
+            pass
 
     tables: dict[str, dict[str, int]] = {}
     for version, text in raw.items():
@@ -89,9 +112,15 @@ def check_coherence(tables: dict[str, dict[str, int]]) -> list[str]:
     return problems
 
 
+def _order(version: str) -> tuple:
+    return tuple(int(part) for part in version.split("."))
+
+
 def check_drift(tables: dict[str, dict[str, int]]) -> list[str]:
     problems: list[str] = []
-    versions = sorted(tables)
+    # numeric order, not string order: "3.8" sorts after "3.15" as a string, and
+    # comparing those two tables reports every opcode in the language as drift
+    versions = sorted(tables, key=_order)
     for older, newer in zip(versions, versions[1:]):
         if (older, newer) in RENUMBERED_BOUNDARIES:
             continue                      # wholesale reshuffle, nothing to compare
@@ -191,7 +220,7 @@ def main() -> int:
 
     if not args.quiet:
         total = sum(len(table) for table in tables.values())
-        print(f"versions: {', '.join(sorted(tables))}   opcodes: {total}")
+        print(f"versions: {', '.join(sorted(tables, key=_order))}   opcodes: {total}")
     if problems:
         print(f"{len(problems)} problem(s):")
         for problem in problems[:40]:

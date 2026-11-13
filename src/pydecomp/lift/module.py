@@ -582,18 +582,52 @@ def with_provenance(text: str) -> str:
     return "\n".join([provenance()] + list(body)) + "\n"
 
 
+#: the SSA engine is the default; `--legacy` turns it off for one cycle, which is
+#: also how the stack engine stays testable as the fallback it now is
+ENGINE_SWITCH = {"ssa": True}
+
+_RANK = {"semantic": 0, "structural": 1, "syntactic": 2, "unverified": 3}
+
+
 def lift_module(code: CodeObj, version: tuple) -> str:
     """Whole-module reconstruction: rebuilt source where proven, lifter elsewhere."""
     from ..bytecode.ir_pipeline import lift_module_ir
 
+    if not ENGINE_SWITCH["ssa"]:
+        LIFT_QUALITY["ir"] = {"engine": "ssa-ir", "tier": "skipped",
+                              "detail": "the SSA engine is off (--legacy)"}
+        return _lift_with_stack(code, version, legacy=True)
     ir_text, ir_report = lift_module_ir(code, version)
     LIFT_QUALITY["ir"] = ir_report
-    if ir_text is not None:
+    if ir_text is not None and ir_report.get("tier") == "semantic":
         # the SSA emitter produced text that recompiles to the same instructions
         LIFT_QUALITY["proven"] = True
         LIFT_QUALITY["engine"] = "ssa-ir"
         return with_provenance(ir_text)
-    LIFT_QUALITY["engine"] = "stack"
+    if ir_text is not None:
+        # from another version there is no interpreter here to diff against, so
+        # the grade is the evidence: keep the IR answer only if it grades better
+        stacked = _lift_with_stack(code, version)
+        from ..proof import tiers
+        try:
+            ir_grade = tiers.grade(ir_text, code, version)
+            stack_grade = tiers.grade(stacked, code, version)
+        except Exception:                            # noqa: BLE001 - never fail a lift
+            ir_grade = stack_grade = "unverified"
+        if _RANK.get(ir_grade, 3) < _RANK.get(stack_grade, 3):
+            LIFT_QUALITY["engine"] = "ssa-ir"
+            LIFT_QUALITY["proven"] = ir_grade == "semantic"
+            LIFT_QUALITY["ir"]["detail"] += f" (beats the stack engine's {stack_grade})"
+            return with_provenance(ir_text)
+        LIFT_QUALITY["engine"] = "stack"
+        LIFT_QUALITY["ir"]["detail"] += f" (the stack engine graded {stack_grade})"
+        return stacked
+    return _lift_with_stack(code, version)
+
+
+def _lift_with_stack(code: CodeObj, version: tuple, legacy: bool = False) -> str:
+    """The original statement lifter: the fallback, and `--legacy` proper."""
+    LIFT_QUALITY["engine"] = "stack (legacy)" if legacy else "stack"
     try:
         text = _lift_module6(code, version)
     except Exception as exc:                         # noqa: BLE001 - never fail the run

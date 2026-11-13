@@ -49,6 +49,40 @@ The IR is version-neutral by construction: the builder reads opcode *names*, so
 3.8's `CALL_FUNCTION` and 3.15's `CALL` produce the same IR node, and one emitter
 serves every version the front end can read.
 
+## The version matrix
+
+Every version the front end reads goes through the same four steps - bytes,
+code object, IR, source - and the opcode table each step uses is that release's
+own numbering, not an approximation of it:
+
+```console
+$ python3 tools/fetch_opcode_tables.py --show
+  3.8: 120 opcodes from opcode.py  (6 relative, 5 absolute jumps, 12 comparisons)
+  ...
+  3.15: 154 opcodes from _opcode_metadata.py  (19 relative, 0 absolute jumps)
+```
+
+| version | naming | jumps | IR |
+|---|---|---|---|
+| 3.8 | `opcode.py`, block stack for `try`/`with` | absolute, `hasjabs` | `while`/`if`/`for` from the CFG, `SETUP_FINALLY` regions named and handed back |
+| 3.9 – 3.10 | `opcode.py`, block stack narrowed | absolute, `hasjabs` | same |
+| 3.11 | `opcode.py`, split forward/backward jumps, `PRECALL` | relative to the instruction | same, plus `CACHE` skipping |
+| 3.12 | `opcode.py`, jumps unified again, `RETURN_CONST` | relative | same |
+| 3.13 | `_opcode_metadata.py`, flags in `COMPARE_OP`'s low bits | relative, measured from the *following* instruction | same |
+| 3.14 – 3.15 | `_opcode_metadata.py`, `LOAD_FAST_BORROW`, `LOAD_SMALL_INT`, `NOT_TAKEN` | relative | same |
+
+`tests/unit/test_version_matrix.py` assembles real bytecode for each version -
+2-byte instructions, that version's jump encoding, that version's marshal layout
+- puts it in a `.pyc` with that version's magic, and asserts the source comes
+out: `bytes → parse_pyc → CodeObj → IR → AST → source`, eight versions, no other
+interpreter on the machine.
+
+The stack engine is still there and still selectable for one cycle:
+
+```console
+$ python3 -m pydecomp --legacy packed.pyc
+```
+
 ## Selecting an answer
 
 Every candidate's text is graded against the *original code object* with the same
