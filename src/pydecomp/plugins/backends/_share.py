@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import base64
 import binascii
+from functools import lru_cache
+
+#: How much of a blob an opinion is formed from.  These functions order and
+#: prune a search, so a sample answers the question they are asked; reading
+#: every byte of a 300 KB literal once per candidate is what turned one hostile
+#: file into a minute of work.
+WINDOW = 16 << 10
 
 B64 = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
 B64URL = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=")
@@ -12,19 +19,81 @@ B85 = frozenset(range(33, 118))
 HEX = frozenset(b"0123456789abcdefABCDEF")
 
 
+@lru_cache(maxsize=1024)
+def xor_table(key: int) -> bytes:
+    """``blob.translate(xor_table(k))`` is ``blob`` XORed with one byte."""
+    return bytes(byte ^ key for byte in range(256))
+
+
+@lru_cache(maxsize=1024)
+def add_table(delta: int) -> bytes:
+    """``blob.translate(add_table(d))`` adds ``d`` to every byte, mod 256."""
+    return bytes((byte + delta) & 0xFF for byte in range(256))
+
+
+@lru_cache(maxsize=64)
+def rotate_table(bits: int) -> bytes:
+    """``blob.translate(rotate_table(b))`` rotates every byte left by ``b``."""
+    return bytes(((byte << bits) | (byte >> (8 - bits))) & 0xFF for byte in range(256))
+
+
+def xor_cyclic(blob: bytes, key: bytes) -> bytes:
+    """XOR with a key repeated over the blob, done as one big-integer XOR."""
+    if not key:
+        return bytes(blob)
+    pattern = (bytes(key) * (len(blob) // len(key) + 1))[:len(blob)]
+    return (int.from_bytes(blob, "big")
+            ^ int.from_bytes(pattern, "big")).to_bytes(len(blob), "big")
+
+
+def sample(blob: bytes) -> bytes:
+    """A bounded window of the blob: most of the front, some of the back.
+
+    Structure at either end matters - a preamble at the front, padding at the
+    back - and nothing in between changes a fraction by more than noise.
+    """
+    if len(blob) <= WINDOW:
+        return bytes(blob)
+    tail = WINDOW // 4
+    return bytes(blob[:WINDOW - tail]) + bytes(blob[-tail:])
+
+
 def share(blob: bytes, allowed) -> float:
     """Fraction of bytes inside ``allowed``; 0.0 for an empty blob."""
     if not blob:
         return 0.0
-    return sum(1 for byte in blob if byte in allowed) / len(blob)
+    window = sample(blob)
+    return sum(1 for byte in window if byte in allowed) / len(window)
+
+
+PRINTABLE_FLAGS = bytes(1 if byte in b"\n\r\t" or 32 <= byte <= 126 else 0
+                       for byte in range(256))
+ALNUM_FLAGS = bytes(1 if (48 <= byte <= 57 or 65 <= byte <= 90 or 97 <= byte <= 122)
+                    else 0 for byte in range(256))
 
 
 def text_score(blob: bytes) -> float:
     """How much this reads as text - the usual sign that a layer decoded."""
     if not blob:
         return 0.0
-    good = sum(1 for byte in blob if byte in b"\n\r\t" or 32 <= byte <= 126)
-    return good / len(blob)
+    window = sample(blob)
+    return sum(window.translate(PRINTABLE_FLAGS)) / len(window)
+
+
+#: characters that may appear in text without making it less like text
+_TAINT = {code: None for code in range(0x20) if chr(code) not in "\n\r\t"}
+_TAINT[0x7F] = None
+
+
+def _mostly_printable(text: str) -> bool:
+    """``str.isprintable`` is C and fast; this is the slower question it excludes.
+
+    Tabs and newlines are text, and ``isprintable`` says they are not, so a
+    document with them in it has to be counted the long way - but only when the
+    fast answer was "no".
+    """
+    kept = len(text.translate(_TAINT))
+    return kept / len(text) >= 0.95
 
 
 MAGIC = (b"\x1f\x8b", b"BZh", b"\xfd7zXZ", b"x\x9c", b"x\xda", b"x\x01",
@@ -43,11 +112,12 @@ def structured(blob: bytes) -> bool:
     if any(blob.startswith(magic) for magic in MAGIC):
         return True
     try:
-        text = blob.decode("utf-8")
-    except UnicodeDecodeError:
+        text = sample(blob).decode("utf-8", "ignore")
+    except UnicodeDecodeError:                       # pragma: no cover - ignored
         return False
-    printable = sum(1 for char in text if char.isprintable() or char in "\n\r\t")
-    if printable / len(text) < 0.97:
+    if not text:
+        return False
+    if not text.isprintable() and not _mostly_printable(text):
         return False
     return any(char.isalpha() for char in text)
 
@@ -65,15 +135,14 @@ def evidence(blob: bytes) -> float:
     if blob[:2] in (b"\r\n", b"\n\r"):
         return 0.8                     # a pyc header names its own version
     try:
-        text = blob.decode("utf-8")
-    except UnicodeDecodeError:
+        text = sample(blob).decode("utf-8", "ignore")
+    except UnicodeDecodeError:                       # pragma: no cover - ignored
         return 0.0
     if not text:
         return 0.0
-    printable = sum(1 for char in text if char.isprintable() or char in "\n\r\t")
-    if printable / len(text) < 0.95:
+    if not text.isprintable() and not _mostly_printable(text):
         return 0.0
-    letters = sum(1 for char in text if char.isalnum())
+    letters = sum(map(str.isalnum, text))
     return 0.4 + 0.4 * min(1.0, letters / len(text))
 
 
@@ -85,12 +154,17 @@ def score(blob: bytes) -> float:
     """Evidence, plus how much the bytes read like a codec's own output."""
     weight = layer_evidence(blob)
     try:
-        text = blob.decode("utf-8")
-    except UnicodeDecodeError:
+        text = sample(blob).decode("utf-8", "ignore")
+    except UnicodeDecodeError:                       # pragma: no cover - ignored
         return weight
     if not text:
         return weight
-    clean = sum(1 for char in text if char in CLEAN) / len(text)
+    dirty = {ord(char): None for char in text
+             if char not in CLEAN} if len(text) <= 4096 else None
+    if dirty is None:
+        clean = sum(1 for char in text if char in CLEAN) / len(text)
+    else:
+        clean = len(text.translate(dirty)) / len(text)
     return weight + 0.5 * clean
 
 
@@ -116,7 +190,8 @@ def promise(blob: bytes) -> float:
     score_now = layer_evidence(blob)
     if score_now >= 1.0 or not blob:
         return score_now
-    padded = bytes(blob) + b"=" * (-len(blob) % 4)
+    window = sample(blob)
+    padded = window + b"=" * (-len(window) % 4)
     best = 0.0
     for opener in (lambda data: base64.b64decode(data, validate=False),
                    lambda data: binascii.unhexlify(data)):
@@ -142,7 +217,8 @@ def layer_evidence(blob: bytes) -> float:
         return 1.6                                    # already a known magic
     if not blob:
         return 0.0
-    padded = bytes(blob) + b"=" * (-len(blob) % 4)
+    window = sample(blob)
+    padded = window + b"=" * (-len(window) % 4)
     for opener in (lambda data: base64.b64decode(data, validate=False),
                    lambda data: binascii.unhexlify(data)):
         try:
@@ -151,6 +227,4 @@ def layer_evidence(blob: bytes) -> float:
             continue
         if opened and any(opened.startswith(magic) for magic in MAGIC):
             return 1.5
-    if b"0123456789" in blob[:1] or base < 0.4:
-        return base
     return base

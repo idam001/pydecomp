@@ -49,6 +49,22 @@ def _open_tar(blob: bytes) -> bytes | None:
         return None
 
 
+def _forge_zip(payload: bytes) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("payload.py", payload)
+    return buffer.getvalue()
+
+
+def _forge_tar(payload: bytes) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        info = tarfile.TarInfo("payload.py")
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+    return buffer.getvalue()
+
+
 BACKENDS = [
     Backend("zipmember", "compress", 2, _open_zip, None,
             "the single file inside a zip"),

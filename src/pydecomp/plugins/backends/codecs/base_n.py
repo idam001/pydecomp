@@ -19,12 +19,18 @@ ALPHABETS = {
 }
 
 
+#: 58 and 62 divide a big integer, so the work grows with the square of the
+#: blob: a 300 KB literal costs minutes and is not a base-N payload
+MAX_BASE_TEXT = 64 << 10
+
 #: the decoder registry spells these out; a backend name is the short form
 REGISTRY_NAME = {"b58": "base58", "b62": "base62", "b45": "base45", "z85": "z85"}
 
 
 def _opener(codec: str):
     def open_with_table(blob: bytes) -> bytes | None:
+        if len(blob) > MAX_BASE_TEXT:
+            return None
         from ....decoders.registry import TRANSFORMS
         decode = TRANSFORMS.get(REGISTRY_NAME.get(codec, codec))
         if decode is None:

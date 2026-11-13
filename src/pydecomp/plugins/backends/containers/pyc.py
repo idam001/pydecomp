@@ -13,6 +13,9 @@ from ..spec import Backend
 HEADER = 16
 MAGIC_TAIL = (b"\r\n", b"\n\r")
 
+#: a magic word for a version this pipeline knows, then the twelve header bytes
+PYTHON_MAGIC = b"3\r\r\n"
+
 
 def _is_pyc(blob: bytes) -> bool:
     return len(blob) > HEADER and blob[2:4] in MAGIC_TAIL
@@ -42,7 +45,8 @@ def _add_header(blob: bytes) -> bytes | None:
 
 BACKENDS = [
     Backend("pycstrip", "container", 0, _strip_header, None,
-            "the marshal stream inside a .pyc header"),
+            "the marshal stream inside a .pyc header",
+            forge=lambda payload: PYTHON_MAGIC + b"\x00" * 12 + bytes(payload)),
     Backend("marshalled", "container", 1, _add_header, None,
             "a bare marshal stream, read as code"),
 ]

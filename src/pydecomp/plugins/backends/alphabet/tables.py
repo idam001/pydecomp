@@ -16,7 +16,7 @@ from __future__ import annotations
 import base64
 
 from ..spec import Backend
-from .._share import B64
+from .._share import B64, share
 
 STANDARD = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
@@ -53,7 +53,7 @@ def _opener(name: str):
 def _sniff(blob: bytes) -> float:
     if len(blob) < 16:
         return 0.0
-    return sum(1 for byte in blob if byte in B64) / len(blob) * 0.85
+    return 0.85 * share(blob, B64)
 
 
 def _forger(name: str):

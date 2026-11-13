@@ -53,7 +53,13 @@ def _open_rc4(blob: bytes) -> bytes | None:
     return None
 
 
+def _forge_rc4(payload: bytes) -> bytes:
+    key = b"k3y-with-enough-distinct-bytes"
+    return key + rc4(payload, key)
+
+
 BACKENDS = [
     Backend("rc4head", "cipher", 3, _open_rc4, None,
-            "RC4 with the key carried in front of the ciphertext"),
+            "RC4 with the key carried in front of the ciphertext",
+            forge=_forge_rc4),
 ]

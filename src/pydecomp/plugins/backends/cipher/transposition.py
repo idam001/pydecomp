@@ -13,6 +13,10 @@ from ..spec import Backend
 
 MAX_CANDIDATES = 4
 
+#: 15 permutations of the whole blob, each a list of its length; past this size
+#: the work is the blob rather than the cipher
+MAX_SCAN = 64 << 10
+
 
 def rail_fence_decode(blob: bytes, rails: int) -> bytes:
     pattern = list(range(rails)) + list(range(rails - 2, 0, -1))
@@ -66,11 +70,15 @@ def _columnar_encode(payload: bytes, columns: int) -> bytes:
 
 
 def _each_rail(blob: bytes):
+    if len(blob) > MAX_SCAN:
+        return
     found = [rail_fence_decode(blob, rails) for rails in range(2, 9)]
     yield from rank([out for out in found if structured(out)], MAX_CANDIDATES)
 
 
 def _each_columnar(blob: bytes):
+    if len(blob) > MAX_SCAN:
+        return
     found = [columnar_decode(blob, columns) for columns in range(2, 17)]
     yield from rank([out for out in found if structured(out)], MAX_CANDIDATES)
 

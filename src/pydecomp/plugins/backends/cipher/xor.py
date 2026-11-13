@@ -10,7 +10,7 @@ with words in it.
 from __future__ import annotations
 
 from ..spec import Backend
-from .._share import rank, structured
+from .._share import rank, structured, xor_cyclic, xor_table
 
 KEY_LENGTHS = (4, 6, 8, 12, 16, 24, 32)
 
@@ -19,11 +19,17 @@ KEY_LENGTHS = (4, 6, 8, 12, 16, 24, 32)
 #: small enough to enumerate the structured ones; the explorer checks them all.
 MAX_CANDIDATES = 8
 
+#: a byte-at-a-time scan is 255 passes over the blob; past this size the key is
+#: not a single byte applied to the whole file
+MAX_SCAN = 64 << 10
+
 
 def _xor_single_candidates(blob: bytes):
+    if len(blob) > MAX_SCAN:
+        return
     found = []
     for key in range(1, 256):
-        out = bytes(byte ^ key for byte in blob)
+        out = bytes(blob).translate(xor_table(key))
         if structured(out):
             found.append(out)
     yield from rank(found, MAX_CANDIDATES)
@@ -34,7 +40,7 @@ def _xor_header_key(blob: bytes) -> bytes | None:
         if len(blob) <= length + 8:
             continue
         key, body = bytes(blob[:length]), bytes(blob[length:])
-        out = bytes(byte ^ key[index % length] for index, byte in enumerate(body))
+        out = xor_cyclic(body, key)
         if structured(out):
             return out
     return None
@@ -49,7 +55,7 @@ def _xor_repeat_self(blob: bytes) -> bytes | None:
         body = bytes(blob)
         if body[length:length * 2] != body[:length]:
             continue
-        rest = bytes(byte ^ body[index % length] for index, byte in enumerate(body))
+        rest = xor_cyclic(body, body[:length])
         if structured(rest):
             return rest
     return None

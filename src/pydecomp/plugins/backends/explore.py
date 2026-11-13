@@ -76,7 +76,7 @@ def explore(blob: bytes, accept, depth: int = 4, budget: Budget | None = None,
             if level and backend.cost >= 3 and weight < 0.8:
                 continue
             try:
-                budget.spend(backend.cost + 1)
+                budget.spend((backend.cost + 1) * _size_cost(data))
             except Refusal:
                 return Result(_shortest(hits), True, tried)
             tried += 1
@@ -98,6 +98,15 @@ def explore(blob: bytes, accept, depth: int = 4, budget: Budget | None = None,
             order += 1
             heapq.heappush(queue, (-weight, level + 1, order, step, out))
     return Result(_shortest(hits), False, tried)
+
+
+def _size_cost(blob: bytes) -> int:
+    """A step over a bigger blob costs more, because it is more work.
+
+    Without this a 300 KB literal and a 200 byte payload cost the same, and the
+    search spends its whole allowance on the file that was never a loader.
+    """
+    return 1 + len(blob) // (64 << 10)
 
 
 def _shortest(hits: list[Hit]) -> tuple[Hit, ...]:

@@ -440,7 +440,12 @@ def test_a_declared_inverse_roundtrips(name):
     from pydecomp.plugins.backends import by_name
 
     backend = by_name(name)
-    payload = base64.b64encode(zlib.compress(PAYLOAD * 40))
+    # varied across the body on purpose: a payload that compresses to 120 bytes
+    # is below the column length a repeating-key solve needs, and these tests
+    # are about the backends, not about that limit
+    body = b"".join(b"def step%d(value):\n    return value * %d + 1\n\n" % (index, index)
+                    for index in range(40))
+    payload = base64.b64encode(zlib.compress(body))
     forged = backend.inverts(payload)
     assert forged is not None, f"{name} forged nothing"
     assert forged != payload
@@ -454,6 +459,29 @@ def test_a_declared_inverse_roundtrips(name):
 def test_a_backend_without_an_inverse_says_so_rather_than_guessing():
     from pydecomp.plugins.backends import by_name
 
-    backend = by_name("pycstrip")          # reads a header somebody else wrote
+    backend = by_name("xorself")           # its key is written as its own stream
     assert backend.forge is None
     assert backend.inverts(PAYLOAD) is None
+
+
+def test_the_two_byte_swaps_are_their_own_inverse():
+    from pydecomp.plugins.backends.cipher.bitrev import _open_bitrev, _open_nibble
+
+    payload = b"def greet(name):\n    return 'hello ' + name\n"
+    turned = payload.translate(
+        bytes(int(f"{byte:08b}"[::-1], 2) for byte in range(256)))
+    assert turned != payload
+    assert _open_bitrev(turned) == payload
+    swapped = payload.translate(bytes(((b & 0x0F) << 4) | (b >> 4) for b in range(256)))
+    assert _open_nibble(swapped) == payload
+
+
+def test_a_uu_body_longer_than_one_line_comes_back_whole():
+    from pydecomp.plugins.backends.codecs.rearrange import _forge_uu, _open_uu
+
+    payload = b"def step(value):\n    return value * 7 + 1\n\n" * 20
+    forged = _forge_uu(payload)
+    assert forged.count(b"\n") > 2
+    # every line carries its own length: joining them and decoding once returns
+    # the first line and silently drops the rest, which is what this checks
+    assert _open_uu(forged) == payload
