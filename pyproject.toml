@@ -43,10 +43,6 @@ dynamic = ["version"]
 # The native (Cython/ELF) front-end only needs Cython to rebuild the fixtures;
 # analysing a binary uses the bundled sidecar and nothing else.
 cython = ["cython>=3.0"]
-# Optional decompiler backends.  pydecomp grades their output against the
-# original instructions and only keeps a strictly better answer; if they are
-# not installed nothing changes, which is why they are optional.
-backends = ["depyo>=0.3"]
 dev = [
   "pytest>=8.0",
   "pyyaml>=6.0",

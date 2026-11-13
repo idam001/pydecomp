@@ -22,7 +22,7 @@ $ pydecomp suspicious.py
 | call it from Python | [API](api.md) |
 | analyse a `.so` or an ELF | [Native and ELF](native.md) |
 | extend it | [Development](development.md) |
-| know what it cannot do | [FAQ](faq.md) · [Roadmap](roadmap.md) |
+| know what it recovers | [FAQ](faq.md) · [Roadmap](roadmap.md) |
 
 ## The board
 
@@ -51,7 +51,7 @@ Every recovered file opens with one line and nothing else:
    subprocess — enforced by a scanner in CI, not by good intentions.
 2. **One file in, one file out.** Unless you ask for `--reports`.
 3. **Honest output.** Every recovery is compiled, audited for unbound names and
-   reported. Where a value cannot be known, `_PydecompUnknown` appears and the
+   reported. Where a value is not in the bytecode, `_PydecompUnknown` names the
    runnability report says so.
 
 ## Numbers

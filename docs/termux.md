@@ -256,7 +256,7 @@ reports what it searched and **what it can see right now**, and stops:
 | `-o ~/out` | write to Termux storage; `~/storage/…` is slower |
 
 Nothing here ever executes the sample.  That matters more on a phone than
-anywhere else: the file you are looking at cannot touch your contacts, your
+anywhere else: the file you are looking at has no path to your contacts, your
 SMS, or your accounts, because no interpreter ever loads it.
 
 ## Big samples, small RAM

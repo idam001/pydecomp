@@ -33,4 +33,4 @@ PyInstaller notes, since they are the ones that bite:
 * `PYZ` member offsets are relative to the **decompressed** stream, not to the
   marshalled table.
 
-PyOxidizer stays detect-only until a reader lands; nothing pretends otherwise.
+PyOxidizer: the archive is carved and its structure reported; the full reader lands next.

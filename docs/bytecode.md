@@ -13,7 +13,7 @@ produced the sample.**
 - code objects for 3.9 → 3.14, whose field sets differ (3.11 added the exception
   table and `co_qualname`, 3.12 changed slice handling, 3.13 renumbered opcodes,
   3.14 folded more into `BINARY_OP`);
-- bounds on every read, so a hostile "declare 4 GB string" cannot allocate.
+- bounds on every read, so a hostile "declare 4 GB string" is refused before it allocates.
 
 Consequence: you can decompile a 3.9 `.pyc` from a 3.13 interpreter, and a
 malformed stream raises a caught error instead of a segfault-level surprise.

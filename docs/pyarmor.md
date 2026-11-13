@@ -23,7 +23,7 @@ contains a **marshal stream of code objects**. The key lives in
 3. **Hunt the key**: 32-character hex strings and high-entropy 16-byte windows
    carved from the runtime, plus any key you pass with `--pyarmor-key`.
 4. **Accept a candidate only when the decryption proves itself.** AES-CTR output
-   must parse as a marshal stream containing a code object. A wrong key cannot
+   must parse as a marshal stream containing a code object. A wrong key
    pass that test, so a hit is evidence rather than a guess:
 
    ```

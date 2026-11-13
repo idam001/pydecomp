@@ -87,7 +87,7 @@ Adds the `_PydecompUnknown` shim to a file that needs it. Idempotent.
 ### `pydecomp._PydecompUnknown(name)`
 
 The sentinel: callable, subscriptable, iterable, falsy. It exists so an
-unresolved value cannot turn into `None(...)` and change behaviour silently.
+an unresolved value never turns into `None(...)` and changes behaviour silently.
 
 ## Triage
 

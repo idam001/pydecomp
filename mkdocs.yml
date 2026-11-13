@@ -42,7 +42,7 @@ nav:
       - Install: install.md
       - Termux (Android): termux.md
       - Tested against a packer: adversarial.md
-      - What it cannot do: limits.md
+      - What it recovers: recovery.md
       - Quick start: quickstart.md
       - CLI reference: cli.md
   - How it works:
@@ -50,7 +50,7 @@ nav:
       - Proof-carrying output: proof.md
       - PyArmor 8/9 static unpack: pyarmor.md
       - Freezers: freezers.md
-      - Decompiler backends: backends.md
+      - The decompiler pipeline: pipeline.md
       - Plugins: plugins.md
       - MCP server (agents): mcp.md
       - Architecture: architecture.md

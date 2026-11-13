@@ -5,7 +5,7 @@ Nuitka, cx_Freeze, py2exe, PEX, shiv, briefcase, Cython, marshal, `.pyc`
 1.0–3.15, and Base64/zlib/XOR/emoji chains — statically, on your machine.
 
 **Every output ships with a machine-checkable proof. pydecomp refuses to write
-source it cannot verify.**  By [Idam Emmanuel](https://github.com/idam001).
+source at the tier it proves.**  By [Idam Emmanuel](https://github.com/idam001).
 
 [![CI](https://github.com/idam001/pydecomp/actions/workflows/ci.yml/badge.svg)](https://github.com/idam001/pydecomp/actions/workflows/ci.yml)
 ![version](https://img.shields.io/badge/version-1.0.0-3fb950)
@@ -73,7 +73,7 @@ $ pydecomp worker.py          # a real PyArmor 9 payload, runtime beside it
 `--strict` writes **nothing** unless every unit is instruction-identical, and
 exits `3`. It is the only Python recovery tool that will refuse its own output.
 
-![pydecomp --strict refuses to write what it cannot prove](docs/assets/strict-refusal.svg)
+![pydecomp --strict writes only what it proves](docs/assets/strict-refusal.svg)
 
 ### Verify a proof yourself
 
@@ -102,7 +102,7 @@ offline — no CDN, no fonts, no scripts.
 
 | | |
 |---|---|
-| **Protectors** | PyArmor 8/9 **static unpack** (header parse → key hunt in `pyarmor_runtime` → AES-CTR → marshal → lift, key accepted only when the plaintext parses), PyArmor 7 detect-only, Hyperion, pyobfuscate.com |
+| **Protectors** | PyArmor 8/9 **static unpack** (header parse → key hunt in `pyarmor_runtime` → AES-CTR → marshal → lift, key accepted only when the plaintext parses), PyArmor 7 static carve (key fragments reported), Hyperion, pyobfuscate.com |
 | **Freezers** | PyInstaller CArchive + PYZ (2.0 and 2.1+ cookies, stripped `.pyc` headers rebuilt), cx_Freeze, py2exe, PEX, shiv, briefcase |
 | **Bytecode** | CPython 3.8–3.15 by table, `.pyc` 1.0–3.15 sniffed, PyPy lifted with the closest table (marked *approximate*) |
 | **Interpreters** | CPython, PyPy, MicroPython `.mpy`, Jython, IronPython, Brython — named by signature, never guessed |
@@ -183,7 +183,7 @@ container and on a phone: one directory tree, or one file.
 | **Both engines** | Text/expression engine for source-level obfuscation, bytecode engine for `marshal`/`pyc`/`compile()` payloads. |
 | **Version-aware** | Own `marshal` reader and opcode tables for CPython 3.9 → 3.14, without needing that interpreter installed. |
 | **Runs anywhere** | Pure standard library, single file if you want it, Termux included. |
-| **Honest output** | Every recovery is compiled, audited for unbound names, and reported — a file that cannot run is never sold as success. |
+| **Honest output** | Every recovery is compiled, audited for unbound names, and reported — a file that would not run is caught before it is written. |
 
 ## Cleaning may never cost you the program
 
@@ -285,7 +285,7 @@ The engine is a pipeline, and every stage reports what it did:
 5. **Polish** — demangle `lIIllIlI`-style identifiers, undo control-flow
    flattening, and stamp the result with the project signature.
 6. **Audit** — compile the result, list unresolved names, keep `_PydecompUnknown`
-   where a value genuinely cannot be known.
+   where the value is not in the bytecode, `_PydecompUnknown` names the hole.
 
 ## Measured results
 

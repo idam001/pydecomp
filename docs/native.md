@@ -57,7 +57,7 @@ of the original code object it reproduces.
   registers.
 - No DWARF variable recovery beyond line tables.
 - No unpacking of a bespoke ELF crypter: if the payload is only assembled in
-  memory at run time, static analysis cannot reach it.
+  memory at run time, which is the value the static carve reports as run-time-only.
 
 ## Building the fixtures
 

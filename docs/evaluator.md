@@ -60,7 +60,7 @@ it resolved from the whitelist — a method call on an unknown name raises
 
 - Every evaluation has a step budget; a pathological expression is abandoned,
   not spun on.
-- Strings have a length ceiling, so `'a' * 10**9` cannot be built.
+- Strings have a length ceiling, so `'a' * 10**9` stops at the ceiling instead of being built.
 - Recursion into the evaluator is depth-limited.
 
 ## Why not `eval`?

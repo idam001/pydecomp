@@ -79,19 +79,6 @@ def _from_code(mod: CodeObj, version: tuple, trace: list, depth: int,
             return found
 
     text = lift_module(mod, version)
-    # A stronger decompiler, if this machine has one installed, may beat the
-    # bundled lifter - but only when its output grades strictly better against
-    # the same code object.  Without one installed this is a no-op.
-    try:
-        from ..bytecode.backends import LAST, try_upgrade
-        upgraded = try_upgrade(raw, mod, version, text)
-        if upgraded:
-            trace.append("backend " + str(LAST.get("backend"))
-                         + " produced a stronger reconstruction ("
-                         + str(LAST.get("tier")) + ")")
-            text = upgraded
-    except Exception:                            # noqa: BLE001 - never fail a run
-        pass
     stalled, blobs, total = _encrypted_payload(mod)
     if LIFT_QUALITY["proven"]:
         trace.append("no further text layer → rebuilt whole module as source")

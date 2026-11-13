@@ -1,7 +1,9 @@
 """pydecomp - backends base.
 
-One decompiler cannot be best at everything, and the bytecode of 3.15 is not the
-bytecode of 3.8.  A backend is anything that turns *bytes* into *text*:
+A backend is anything that turns *bytes* into *text*.  This build ships one -
+its own - and the interface is kept because the IR pipeline and the stack
+simulator are two backends of the same project, and the stronger one wins on
+evidence:
 
     name        how it is named in the proof
     supports()  which interpreter versions it claims
