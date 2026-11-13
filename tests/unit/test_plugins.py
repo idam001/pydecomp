@@ -383,15 +383,31 @@ def test_data_uris_give_up_their_bytes():
 
 
 def test_wide_and_lookalike_text_fold_back():
-    from pydecomp.plugins.backends.codecs.glyphs import _open_homoglyph, _open_wide
+    from pydecomp.plugins.backends.codecs.glyphs import (
+        _forge_homoglyph, _forge_wide, _open_homoglyph, _open_wide)
 
-    wide = "".join(chr(ord(character) + 0xFEE0) for character in "def greet():")
-    assert _open_wide(wide.encode()) == b"def greet():"
-    lookalike = "def gre\u0435t(n\u0430me):"      # Cyrillic e and a
-    assert _open_homoglyph(lookalike.encode()) == b"def greet(name):"
+    plain = b"def greet(name): return 'hello'"
+    wide = _forge_wide(plain)
+    lookalike = _forge_homoglyph(plain)
+    assert _open_wide(wide) == plain
+    assert _open_homoglyph(lookalike) == plain
     assert _open_wide(PAYLOAD) is None
     assert _open_homoglyph(PAYLOAD) is None
+    with pytest.raises((UnicodeDecodeError, ValueError)):
+        _forge_wide(bytes(range(256)))
+    with pytest.raises(UnicodeDecodeError):
+        _forge_homoglyph(bytes(range(256)))
 
+
+def test_magic_evidence_checks_the_stream_not_just_two_bytes():
+    from pydecomp.plugins.backends._share import evidence, structured
+
+    fake = b"\x1f\x8b" + b"not a gzip stream" * 8
+    real = gzip.compress(b"def recovered(): return 7")
+    assert evidence(fake) < 1.0
+    assert evidence(real) == 1.0
+    assert structured(real)
+    assert evidence(b"\\xfd7zXZ" + b"not an xz stream") < 1.0
 
 def _repeating_key_fixture(length: int, repeats: int = 150) -> tuple[bytes, bytes]:
     source = b"".join(b"def step%d(value):\n    return value * %d + 1\n\n" % (index, index)

@@ -60,6 +60,19 @@ def _open_homoglyph(blob: bytes) -> bytes | None:
     return _map_text(blob, HOMO)
 
 
+def _forge_wide(payload: bytes) -> bytes:
+    text = bytes(payload).decode("ascii")
+    if any(not 0x20 <= ord(character) <= 0x7E for character in text):
+        raise ValueError("fullwidth encodes printable ASCII only")
+    return "".join(chr(0x3000 if character == " " else ord(character) + 0xFEE0)
+                   for character in text).encode("utf-8")
+
+
+def _forge_homoglyph(payload: bytes) -> bytes:
+    text = bytes(payload).decode("ascii")
+    return "".join(_LOOKALIKE.get(character, character) for character in text).encode("utf-8")
+
+
 def _sniff_wide(blob: bytes) -> float:
     try:
         text = bytes(blob).decode("utf-8")
@@ -87,13 +100,8 @@ def _sniff_homoglyph(blob: bytes) -> float:
 BACKENDS = [
     Backend("fullwidth", "codec", 0, _open_wide, _sniff_wide,
             "wide forms of ASCII folded back to ASCII",
-            forge=lambda payload: "".join(
-                chr(ord(character) + 0xFEE0) for character in payload.decode("latin-1")
-            ).encode("utf-8")),
+            forge=_forge_wide),
     Backend("homoglyph", "codec", 0, _open_homoglyph, _sniff_homoglyph,
             "Cyrillic and Greek letters that render as Latin",
-            forge=lambda payload: "".join(
-                _LOOKALIKE.get(character, character)
-                for character in payload.decode("latin-1")
-            ).encode("utf-8")),
+            forge=_forge_homoglyph),
 ]

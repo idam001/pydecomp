@@ -53,6 +53,8 @@ def explore(blob: bytes, accept, depth: int = 4, budget: Budget | None = None,
     """
     budget = budget or Budget()
     known = sorted(backends(), key=lambda backend: (backend.cost, backend.name))
+    continuations = tuple(backend for backend in known
+                          if backend.sniff is not None and backend.cost <= 1)
     hits: list[Hit] = []
     seen = {hashlib.sha256(blob).digest()}
     queue: list[tuple[float, int, int, tuple[str, ...], bytes]] = [
@@ -94,7 +96,9 @@ def explore(blob: bytes, accept, depth: int = 4, budget: Budget | None = None,
                 weight = promise(out)
                 if weight <= 0.0:
                     continue          # noise does not get another step
-                children.append((weight, step, out))
+                next_signal = max((backend.worth_trying(out)
+                                   for backend in continuations), default=0.0)
+                children.append((weight + 0.25 * next_signal, step, out))
         children.sort(key=lambda item: -item[0])
         for weight, step, out in children[:width]:
             order += 1

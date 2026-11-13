@@ -100,6 +100,51 @@ MAGIC = (b"\x1f\x8b", b"BZh", b"\xfd7zXZ", b"x\x9c", b"x\xda", b"x\x01",
          b"PK\x03\x04", b"ustar", b"\x28\xb5\x2f\xfd")
 
 
+def _opens_compressed(blob: bytes) -> bool:
+    """Check that a compression header leads to output, without inflating a bomb."""
+    import bz2
+    import lzma
+    import zlib
+
+    try:
+        if blob.startswith(b"\x1f\x8b"):
+            return bool(zlib.decompressobj(31).decompress(blob, 64))
+        if blob.startswith((b"x\x9c", b"x\xda", b"x\x01")):
+            return bool(zlib.decompressobj().decompress(blob, 64))
+        if blob.startswith(b"BZh"):
+            return bool(bz2.BZ2Decompressor().decompress(blob, max_length=64))
+        if blob.startswith(b"\xfd7zXZ"):
+            return bool(lzma.LZMADecompressor().decompress(blob, max_length=64))
+    except (EOFError, OSError, ValueError, zlib.error, lzma.LZMAError):
+        return False
+    return False
+
+
+def _magic_evidence(blob: bytes) -> bool:
+    if not blob:
+        return False
+    if blob.startswith((b"\x1f\x8b", b"BZh", b"\xfd7zXZ",
+                        b"x\x9c", b"x\xda", b"x\x01")):
+        return _opens_compressed(blob)
+    if blob.startswith(b"PK\x03\x04"):
+        try:
+            import io
+            import zipfile
+            with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+                return bool(archive.namelist())
+        except (OSError, ValueError, zipfile.BadZipFile):
+            return False
+    if blob.startswith(b"ustar"):
+        try:
+            import io
+            import tarfile
+            with tarfile.open(fileobj=io.BytesIO(blob), mode="r:") as archive:
+                return bool(archive.getmembers())
+        except (OSError, ValueError, tarfile.TarError):
+            return False
+    return blob.startswith(b"\x28\xb5\x2f\xfd")
+
+
 def structured(blob: bytes) -> bool:
     """Evidence that a candidate is a real layer and not noise.
 
@@ -109,7 +154,7 @@ def structured(blob: bytes) -> bool:
     """
     if not blob:
         return False
-    if any(blob.startswith(magic) for magic in MAGIC):
+    if _magic_evidence(blob):
         return True
     try:
         text = sample(blob).decode("utf-8", "ignore")
@@ -130,7 +175,7 @@ def evidence(blob: bytes) -> float:
     """
     if not blob:
         return 0.0
-    if any(blob.startswith(magic) for magic in MAGIC):
+    if _magic_evidence(blob):
         return 1.0
     if blob[:2] in (b"\r\n", b"\n\r"):
         return 0.8                     # a pyc header names its own version
@@ -214,7 +259,7 @@ def layer_evidence(blob: bytes) -> float:
     """
     base = evidence(blob)
     if base >= 1.0:
-        return 1.6                                    # already a known magic
+        return 1.6                                    # a readable compression/container header
     if not blob:
         return 0.0
     window = sample(blob)
@@ -225,6 +270,6 @@ def layer_evidence(blob: bytes) -> float:
             opened = opener(padded)
         except Exception:                             # noqa: BLE001
             continue
-        if opened and any(opened.startswith(magic) for magic in MAGIC):
+        if opened and _magic_evidence(opened):
             return 1.5
     return base
