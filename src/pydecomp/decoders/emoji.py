@@ -24,7 +24,18 @@ _EMOJI_SETS = [tuple(pool) for pool in _EMOJI_POOLS]
 
 _EMOJI_BLOCKS = (0x1F300, 0x1F600, 0x1F900, 0x2600, 0x2700, 0x1F1E6)
 
+#: how much of a text the emoji readers look at.  A layer that is 8 MB of
+#: something else should not be walked four ways character by character.
+WINDOW = 64 << 10
+_HIGH = {code: 1 for code in range(0x2001, 0x110000) if chr(code).strip()}
+
+
+def _window(text: str) -> str:
+    return text[:WINDOW] if len(text) > WINDOW else text
+
+
 def _emoji_density(text: str) -> float:
+    text = _window(text)
     if not text:
         return 0.0
     hits = sum(1 for ch in text if ord(ch) > 0x2000 and not ch.isspace())
@@ -32,6 +43,8 @@ def _emoji_density(text: str) -> float:
 
 def _emoji_byte_chain(text: str) -> bytes | None:
     """Emoji where each symbol stands for one byte (``emojify``-style)."""
+    if len(text) > 8 << 20:
+        return None                 # a chain that size is not what this reads
     if _emoji_density(text) < 0.9:
         return None
     symbols = [ch for ch in text if not ch.isspace()]

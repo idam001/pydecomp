@@ -17,27 +17,10 @@ from ..decoders.compression.zlib_codec import _zlib_stream
 from ..decoders.escapes import _escaped_bytes
 from ..decoders.hex_loose import _hex_loose
 from ..decoders.rot13 import _rot13_strict
+from ..decoders.limits import (bz2_bytes, gzip_bytes, lzma_bytes,
+                               raw_deflate_bytes, zlib_bytes)
 from ..decoders.z85 import _base85_z85
 
-TRANSFORMS = {
-    "base64": lambda b: base64.b64decode(b, validate=False),
-    "b64url": lambda b: base64.urlsafe_b64decode(b + b"=" * (-len(b) % 4)),
-    "base32": lambda b: base64.b32decode(b + b"=" * (-len(b) % 8)),
-    "base16": _hex_strict,
-    "base85": lambda b: base64.b85decode(b),
-    "zlib": lambda b: zlib.decompress(b),
-    "gzip": lambda b: gzip.decompress(b),
-    "bz2": lambda b: bz2.decompress(b),
-    "lzma": lambda b: lzma.decompress(b),
-    "deflate": lambda b: zlib.decompress(b, -15),
-    "reverse": lambda b: b[::-1],
-    "rot13": _rot13_strict,
-    "base58": b58decode,
-    "base45": b45decode,
-    "base91": b91decode,
-    "ascii85": lambda b: base64.a85decode(b, adobe=False),
-    "uu": lambda b: binascii.a2b_uu(b),
-}
 
 TRANSFORMS = {
     "base64": lambda b: base64.b64decode(b, validate=False),
@@ -48,12 +31,12 @@ TRANSFORMS = {
     "base85": lambda b: base64.b85decode(b),
     "z85": _base85_z85,
     "base62": _base62,
-    "zlib": lambda b: zlib.decompress(b),
+    "zlib": zlib_bytes,
     "zlib-stream": _zlib_stream,
-    "gzip": lambda b: gzip.decompress(b),
-    "bz2": lambda b: bz2.decompress(b),
-    "lzma": lambda b: lzma.decompress(b),
-    "deflate": lambda b: zlib.decompress(b, -15),
+    "gzip": gzip_bytes,
+    "bz2": bz2_bytes,
+    "lzma": lzma_bytes,
+    "deflate": raw_deflate_bytes,
     "reverse": lambda b: b[::-1],
     "rot13": _rot13_strict,
     "base58": b58decode,

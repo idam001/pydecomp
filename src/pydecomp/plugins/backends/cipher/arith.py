@@ -12,7 +12,7 @@ from .._share import add_table, rank, rotate_table, structured
 #: The scan is 255 candidates over the whole blob, so the constant is the cost.
 #: Past this size a per-byte constant is not what a loader wrote, and the
 #: backend declines rather than spending the file's whole budget here.
-MAX_SCAN = 64 << 10
+MAX_SCAN = 32 << 10
 
 
 def _shift(blob: bytes, delta: int) -> bytes:

@@ -5,6 +5,10 @@ The trees are ordinary packages; a module is a backend bundle if it publishes
 adding a directory - there is no list to remember and no import-time cost paid
 by anyone who never asks for a backend.
 
+The single-file build has no directories to walk: its modules are served by a
+finder.  So discovery also asks the import machinery what it can serve, which is
+the same question in a form that survives being packed into one file.
+
 Order is ``(cost, name)``.  That is not a ranking of quality: it is a promise
 that two runs on the same blob do the same work in the same sequence, which is
 what makes a recipe in a report mean something.
@@ -13,6 +17,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
+import sys
 
 from .spec import Backend
 
@@ -23,13 +28,28 @@ COMMUNITY = "community"
 _cache: tuple[Backend, ...] | None = None
 
 
+def _submodules(package) -> list[str]:
+    """Every submodule name of ``package``, from the filesystem or a finder."""
+    names = {info.name for info in pkgutil.iter_modules(getattr(package, "__path__", []))}
+    for finder in sys.meta_path:
+        lister = getattr(finder, "list_modules", None)
+        if lister is None:
+            continue
+        try:
+            served = lister(package.__name__)
+        except Exception:                                  # noqa: BLE001
+            continue
+        names |= {name.rsplit(".", 1)[-1] for name in served}
+    return sorted(names)
+
+
 def _load_tree(tree: str) -> list[Backend]:
     package = importlib.import_module(f"{__name__.rsplit('.', 1)[0]}.{tree}")
     found: list[Backend] = []
-    for info in pkgutil.iter_modules(package.__path__):
-        if info.name.startswith("_"):
+    for name in _submodules(package):
+        if name.startswith("_"):
             continue
-        module = importlib.import_module(f"{package.__name__}.{info.name}")
+        module = importlib.import_module(f"{package.__name__}.{name}")
         for backend in getattr(module, "BACKENDS", ()):
             if isinstance(backend, Backend):
                 found.append(backend)

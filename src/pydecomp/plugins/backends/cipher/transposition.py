@@ -15,7 +15,7 @@ MAX_CANDIDATES = 4
 
 #: 15 permutations of the whole blob, each a list of its length; past this size
 #: the work is the blob rather than the cipher
-MAX_SCAN = 64 << 10
+MAX_SCAN = 32 << 10
 
 
 def rail_fence_decode(blob: bytes, rails: int) -> bytes:

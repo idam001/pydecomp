@@ -116,6 +116,19 @@ class _BundleLoader(_abc.Loader):
 class _BundleFinder(_abc.MetaPathFinder):
     """Resolve ``pydecomp.*`` imports from the packed sources."""
 
+    def list_modules(self, package: str) -> list[str]:
+        """The submodule names this finder serves under ``package``.
+
+        There is no directory to walk in a bundle, so discovery asks the import
+        machinery what it has instead of asking the filesystem.  Without this
+        the backend trees register nothing and the single file is a weaker tool
+        than the package it was built from - which it was, until a parity run
+        over the corpus said so.
+        """
+        prefix = package + "."
+        return [name for name in _SOURCES
+                if name.startswith(prefix) and "." not in name[len(prefix):]]
+
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in _SOURCES:
             return None

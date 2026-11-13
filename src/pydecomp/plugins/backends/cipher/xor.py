@@ -21,7 +21,7 @@ MAX_CANDIDATES = 8
 
 #: a byte-at-a-time scan is 255 passes over the blob; past this size the key is
 #: not a single byte applied to the whole file
-MAX_SCAN = 64 << 10
+MAX_SCAN = 32 << 10
 
 
 def _xor_single_candidates(blob: bytes):

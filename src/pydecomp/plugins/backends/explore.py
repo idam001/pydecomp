@@ -70,9 +70,11 @@ def explore(blob: bytes, accept, depth: int = 4, budget: Budget | None = None,
             weight = backend.worth_trying(data)
             if weight <= 0.0:
                 continue
-            # a 255-key scan in the middle of a chain is a rare shape: past the
+            # an enumeration in the middle of a chain is a rare shape: past the
             # first step, search the expensive backends only when the blob says
-            # what it is
+            # what it is.  A backend with no opinion of its own still gets its
+            # turn - a zip member says nothing about itself and is often the
+            # answer one step down.
             if level and backend.cost >= 3 and weight < 0.8:
                 continue
             try:
