@@ -10,6 +10,12 @@ from ..bytecode.version_score import _version_score
 
 FLAG_REF = 0x80
 
+#: how deep a container may nest before the stream is refused rather than read.
+#: The reader is recursive, so an unbounded stream is a stack overflow waiting to
+#: happen: 200 is deeper than any real code object and shallow enough that the
+#: recursion limit is never the thing that stops us.
+MAX_DEPTH = 200
+
 class MarshalReader:
     """Reads marshal streams written by any CPython 3.8 – 3.15."""
 
@@ -18,6 +24,7 @@ class MarshalReader:
         self.i = 0
         self.refs: list = []
         self.version = version
+        self.depth = 0
 
     # -- primitives ------------------------------------------------------
     def byte(self) -> int:
@@ -42,6 +49,18 @@ class MarshalReader:
 
     # -- object graph ----------------------------------------------------
     def object(self):
+        """Read one object, refusing a stream that nests without limit."""
+        self.depth += 1
+        if self.depth > MAX_DEPTH:
+            self.depth -= 1
+            raise ValueError(f"stream nests deeper than {MAX_DEPTH} containers "
+                             f"at offset {self.i}")
+        try:
+            return self._object()
+        finally:
+            self.depth -= 1
+
+    def _object(self):
         start = self.i
         flag = self.byte()
         slot = None

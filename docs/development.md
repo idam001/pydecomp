@@ -35,6 +35,8 @@ python3 -m pytest tests/unit -q        # 90 fast API tests
 | `identity` | instruction-identical rebuilds for 47 shapes |
 | `probes` | 37 known obfuscator shapes |
 | `native` | Cython/ELF tiers and payload carving |
+| `differential` | every polish pass, checked by running the code it rewrote |
+| `fuzz` | the marshal/`.pyc`/freezer readers, over mutated bytes |
 | `bench` | the hardest-obfuscation benchmark |
 
 ## The tools
@@ -48,6 +50,8 @@ python3 -m pytest tests/unit -q        # 90 fast API tests
 | `tools/make_fixtures.py` | regenerate the text fixtures (byte-identical) |
 | `tools/bump_version.py` | bump the version everywhere it is written |
 | `tools/fetch_cpython.py` | download CPython's `opcode.py` / `marshal.c` to compare |
+| `tools/diff_polish.py` | run each polish pass and compare behaviour, not structure |
+| `tools/fuzz_parsers.py` | mutate bytes into the readers and require a declared refusal |
 
 ## Adding a decoder
 

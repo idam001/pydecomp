@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-32 gates, plus 401 unit tests:
+33 gates, plus 409 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -300,6 +300,7 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `test_v7` — menu and prompts | all good |
 | `test_v8` — polish, folding, demangling | 44/44 |
 | `differential` — every polish pass returns what the original returns | 26 fixtures × 11 passes, 0 divergences |
+| `fuzz` — mutated bytes into the marshal/`.pyc`/freezer readers | 18,000 blobs, 0 crashes, 0 hangs |
 | `test_identity` — instruction-identical round trips | 47/47 |
 | `test_probes` — obfuscator shapes | 37/37 |
 | `test_native` — Cython/ELF recovery | all good |

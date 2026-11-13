@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fuzzing the readers found two crashes, both a stack away from the user
+
+`tools/fuzz_parsers.py` feeds deterministic mutations - byte flips, truncations,
+all-ones length fields, 30/300/3000-deep nests - into the four readers that take
+hostile bytes: the marshal reader, the `.pyc` header reader, the bare-marshal
+probe and the freezer cookie/TOC walker. The property it asserts is not that
+fuzzing finds nothing; garbage *should* be refused. It is that every refusal is a
+declared exception, nothing runs past the time budget, and the same seed
+reproduces the run. Gate `fuzz`: **18,000 blobs, 4,337 refusals as declared
+exceptions, 0 crashes, 0 hangs**; a 72,000-blob sweep passes the same way.
+
+Two crashes no existing gate had:
+
+- **A deep stream was a stack overflow.** The marshal reader is recursive and
+  nothing bounded the depth: ~900 nested containers escaped as `RecursionError`.
+  `MAX_DEPTH = 200` is now a declared `ValueError` - deeper than any real code
+  object, shallow enough that the recursion limit is never what stops us.
+- **A scalar where a table belongs was a `TypeError`.** A partly-decoded code
+  object with `names = None` or `consts = 7` made the disassembler and the version
+  scorer raise *while scoring a candidate decode*. Both now render the operand as
+  `<arg>` and score what they hold: a decode without tables should score badly,
+  not end the run.
+
+Measured: **409 unit tests**, **33 gates**, single file 421,604 B, corpus 200/200,
+stress 200/200.
+
 ### "complete" now means the code still looks like itself
 
 `--diff` reported `verdict: complete` for the broken `report()` above - the

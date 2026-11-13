@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..bytecode.codeobj import CodeObj
-from ..bytecode.disassembler import disassemble
+from ..bytecode.disassembler import _pool, disassemble
 from ..bytecode.opcodes.tables import OPNAMES
 
 def _version_score(code: "CodeObj", version: tuple) -> float:
@@ -17,7 +17,7 @@ def _version_score(code: "CodeObj", version: tuple) -> float:
     just by decoding into more instructions.
     """
     names = OPNAMES.get(version)
-    if not names or len(code.code) < 2:
+    if not names or not isinstance(code.code, (bytes, bytearray)) or len(code.code) < 2:
         return -1e9
     name_ops = {"LOAD_NAME", "STORE_NAME", "DELETE_NAME", "LOAD_GLOBAL",
                 "STORE_GLOBAL", "DELETE_GLOBAL", "LOAD_ATTR", "STORE_ATTR",
@@ -36,7 +36,11 @@ def _version_score(code: "CodeObj", version: tuple) -> float:
     last = [""]
 
     def scan(unit):
-        raw = unit.code
+        raw = unit.code if isinstance(unit.code, (bytes, bytearray)) else b""
+        # a candidate decode without tables gets no operand-range scoring, so it
+        # is scored on what it does hold
+        local_names, local_vars = _pool(unit.names), _pool(unit.varnames)
+        local_consts = _pool(unit.consts)
         for off, opname, arg, _text in disassemble(unit, version):
             totals["ops"] += 1
             last[0] = opname
@@ -45,16 +49,16 @@ def _version_score(code: "CodeObj", version: tuple) -> float:
                 continue
             if opname in name_ops:
                 index = arg >> 1 if opname in shifted else arg
-                if index >= len(unit.names):
+                if index >= len(local_names):
                     totals["bad_operand"] += 1
             elif opname in fast_ops:
-                if arg >= len(unit.varnames):
+                if arg >= len(local_vars):
                     totals["bad_operand"] += 1
             elif opname in pair_ops:
-                if (arg & 15) >= len(unit.varnames) or (arg >> 4) >= len(unit.varnames):
+                if (arg & 15) >= len(local_vars) or (arg >> 4) >= len(local_vars):
                     totals["bad_operand"] += 1
             elif opname in const_ops:
-                if arg >= len(unit.consts):
+                if arg >= len(local_consts):
                     totals["bad_operand"] += 1
             elif "JUMP" in opname or opname in ("FOR_ITER", "SEND"):
                 totals["jumps"] += 1
@@ -62,7 +66,7 @@ def _version_score(code: "CodeObj", version: tuple) -> float:
                 target = (off + 2 - delta) if "BACKWARD" in opname else (off + 2 + delta)
                 if not (-4 <= target <= len(raw) + 4):
                     totals["bad_jump"] += 1
-        for const in unit.consts:
+        for const in local_consts:
             if isinstance(const, CodeObj):
                 scan(const)
 

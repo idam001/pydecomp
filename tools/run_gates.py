@@ -37,6 +37,7 @@ SUITE = {
     "v8": (GATES / "test_v8.py", {}, False),
     "almighty": (GATES / "test_almighty.py", {}, False),
     "differential": (ROOT / "tools" / "diff_polish.py", {}, False),
+    "fuzz": (ROOT / "tools" / "fuzz_parsers.py", {}, False),
     "reconstruct": (GATES / "test_reconstruct.py", {}, False),
     "families": (GATES / "families_probe.py", {}, False),
     "iocs": (GATES / "test_iocs.py", {}, False),

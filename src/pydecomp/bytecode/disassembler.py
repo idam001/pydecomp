@@ -30,10 +30,21 @@ def _jump_target(version: tuple, off: int, opname: str, arg: int) -> int:
     return off + 2 + pad + arg * 2
 
 
+def _pool(value):
+    """A constant/name table, or an empty one.
+
+    A code object that came out of a partly-decoded stream can hold a scalar where
+    a table belongs.  Rendering `<arg>` for it keeps the disassembly going, which
+    is what the caller wants: it is scoring a candidate decode, and a decode that
+    does not even hold tables should score badly rather than raise.
+    """
+    return value if isinstance(value, (list, tuple)) else ()
+
+
 def disassemble(code: CodeObj, version: tuple):
     names = table_for(version)
-    consts, nm, vars_ = code.consts, code.names, code.varnames
-    raw = code.code
+    consts, nm, vars_ = _pool(code.consts), _pool(code.names), _pool(code.varnames)
+    raw = code.code if isinstance(code.code, (bytes, bytearray)) else b""
     extended = 0
     off = 0
     name_pool_ops = {"LOAD_NAME", "STORE_NAME", "DELETE_NAME", "LOAD_GLOBAL",
