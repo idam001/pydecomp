@@ -5,7 +5,7 @@ corpus; retrain with `python3 tools/train_learn.py`.
 """
 from __future__ import annotations
 
-TRAINED_DIGEST = '460de361eb595fcb4ec1bc56e8141d1473de5f348ba7eb9ea089ea1c5724779c'
+TRAINED_DIGEST = '641eb298837c612180ecea80a6a43bd0654bbf899979f4831bad5fc867c9f445'
 TRAINED_CLASSES = ('base64', 'b64url', 'base32', 'base16', 'hexloose', 'base85', 'z85', 'base62', 'zlib', 'zlib-stream', 'gzip', 'bz2', 'lzma', 'deflate', 'reverse', 'rot13', 'base58', 'base45', 'base91', 'ascii85', 'uu', 'escapes')
 
 TRAINED_WEIGHTS: dict[str, list[int]] = {

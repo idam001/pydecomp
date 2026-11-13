@@ -1,5 +1,5 @@
 {
- "cases": 264,
+ "cases": 276,
  "families": {
   "a_b64": [
    {
@@ -1401,6 +1401,116 @@
     "layers": [
      "accumulate",
      "xor(key=0x5a)"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bo_backend_xor": [
+   {
+    "expect": "recover",
+    "layers": [
+     "xor(key from env)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "xor(key from env)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "xor(key from env)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "xor(key from env)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bp_backend_rc4": [
+   {
+    "expect": "recover",
+    "layers": [
+     "rc4(key in front)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "rc4(key in front)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "rc4(key in front)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "rc4(key in front)",
+     "base64",
+     "zlib"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bq_backend_bare_blob": [
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "base64",
+     "zlib"
     ],
     "payload": "text"
    }

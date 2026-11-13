@@ -1,0 +1,11 @@
+{
+ "expect": "recover",
+ "family": "bq_backend_bare_blob",
+ "layers": [
+  "base64",
+  "zlib"
+ ],
+ "payload": "text",
+ "payload_sha256": "32710e54b94f27a378de6e244529da84f583da6a0f87adb057da59ddaafa40cd",
+ "tail": "backend_bare"
+}

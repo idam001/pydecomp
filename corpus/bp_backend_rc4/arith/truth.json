@@ -1,0 +1,12 @@
+{
+ "expect": "recover",
+ "family": "bp_backend_rc4",
+ "layers": [
+  "rc4(key in front)",
+  "base64",
+  "zlib"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "backend_rc4"
+}

@@ -63,6 +63,7 @@ SUITE = {
     "ir": (ROOT / "tools" / "ir_coverage.py", {}, False),
     "learn": (ROOT / "tools" / "train_learn.py", {}, False),
     "stress": (ROOT / "tools" / "stress_corpus.py", {}, False),
+    "backends": (GATES / "test_backends.py", {}, False),
 }
 
 GOOD = re.compile(r"(all good|passed|instruction-identical|probe shapes recovered|"

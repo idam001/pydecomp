@@ -264,6 +264,9 @@ FAMILIES: dict[str, dict] = {
     "bl_reduce_join": {"layers": ("b64",), "tail": "reduce_join"},
     "bm_chr_join": {"layers": ("b64",), "tail": "chr_join"},
     "bn_accumulate": {"layers": (), "tail": "accumulate"},
+    "bo_backend_xor": {"layers": (), "tail": "backend_xor"},
+    "bp_backend_rc4": {"layers": (), "tail": "backend_rc4"},
+    "bq_backend_bare_blob": {"layers": (), "tail": "backend_bare"},
 
 
 }
@@ -280,6 +283,23 @@ def compile_artifacts(source: str) -> dict:
     code = marshal.dumps(compile(source, "payload.py", "exec"))
     header = importlib.util.MAGIC_NUMBER + b"\x00" * 12
     return {"pyc": header + code, "marshal": code}
+
+
+def _rc4(data: bytes, key: bytes) -> bytes:
+    """RC4, written out: the corpus must not borrow the tool's own implementation."""
+    box = list(range(256))
+    index = 0
+    for position in range(256):
+        index = (index + box[position] + key[position % len(key)]) & 0xFF
+        box[position], box[index] = box[index], box[position]
+    out = bytearray()
+    first = second = 0
+    for byte in data:
+        first = (first + 1) & 0xFF
+        second = (second + box[first]) & 0xFF
+        box[first], box[second] = box[second], box[first]
+        out.append(byte ^ box[(box[first] + box[second]) & 0xFF])
+    return bytes(out)
 
 
 def cook(payload: bytes, layers: tuple[str, ...]) -> tuple[bytes, list[str]]:
@@ -583,6 +603,56 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
                   "exec(bytes(_b).decode())\n" % (numbers, key))
         cooked = raw
         truth_layers = ["accumulate", "xor(key=0x5a)"]
+    elif tail == "backend_xor":
+        # the key is read from the environment when the loader runs, so no
+        # expression can be folded: only the bytes can be read
+        baked = os.environ.get("PYDECOMP_SEED", "A")
+        key = ord(baked[0]) ^ 0x5C
+        mixed = bytes(byte ^ key
+                      for byte in base64.b64encode(zlib.compress(raw)))
+        loader = ("import base64, os, zlib\n"
+                  "_seed = os.environ.get('PYDECOMP_SEED', 'A')\n"
+                  "_key = ord(_seed[0]) ^ 0x5C\n"
+                  "_p = %r\n"
+                  "exec(zlib.decompress(base64.b64decode("
+                  "bytes(b ^ _key for b in _p))))\n" % mixed)
+        cooked = raw
+        truth_layers = ["xor(key from env)", "base64", "zlib"]
+    elif tail == "backend_rc4":
+        key = b"K3y!8z"
+        body = _rc4(base64.b64encode(zlib.compress(raw)), key)
+        loader = ("import base64, zlib\n"
+                  "def _ksa(key):\n"
+                  "    box = list(range(256))\n"
+                  "    index = 0\n"
+                  "    for position in range(256):\n"
+                  "        index = (index + box[position] + key[position %% len(key)]) & 0xFF\n"
+                  "        box[position], box[index] = box[index], box[position]\n"
+                  "    return box\n"
+                  "def _rc4(data, key):\n"
+                  "    box = _ksa(key)\n"
+                  "    out = bytearray()\n"
+                  "    first = second = 0\n"
+                  "    for byte in data:\n"
+                  "        first = (first + 1) & 0xFF\n"
+                  "        second = (second + box[first]) & 0xFF\n"
+                  "        box[first], box[second] = box[second], box[first]\n"
+                  "        out.append(byte ^ box[(box[first] + box[second]) & 0xFF])\n"
+                  "    return bytes(out)\n"
+                  "_p = %r\n"
+                  "exec(zlib.decompress(base64.b64decode(_rc4(_p[6:], _p[:6]))))\n"
+                  % (key + body))
+        cooked = raw
+        truth_layers = ["rc4(key in front)", "base64", "zlib"]
+    elif tail == "backend_bare":
+        # no loader at all: a data file.  Nothing in it is an expression to
+        # fold, which is exactly when the backend tree earns its keep
+        payload_body = base64.b64encode(zlib.compress(raw))
+        loader = ("# collected by the dropper, never executed here\n"
+                  "_blob = %r\n"
+                  "raise SystemExit(0)\n" % payload_body)
+        cooked = raw
+        truth_layers = ["base64", "zlib"]
     elif tail == "zip2":
         inner = os.path.join(folder, ".inner.zip")
         info = zipfile.ZipInfo("payload.py", date_time=(1980, 1, 1, 0, 0, 0))

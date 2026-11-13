@@ -1,8 +1,9 @@
 """pydecomp - peel."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import ast
+import warnings
+from dataclasses import dataclass, field
 import hashlib
 
 from ..bytecode.magic import MAGIC_VERSIONS_BYTES
@@ -96,6 +97,56 @@ class _FoldArithmetic(ast.NodeTransformer):
             return node
         self.folded += 1
         return ast.copy_location(ast.Constant(value=out), node)
+
+
+def _backend_payloads(tree: ast.AST) -> list[Payload]:
+    """Last resort: open the module's literals with the plugin tree.
+
+    Used only when every loader-reading path came up empty, so a file the
+    peeler already understands never takes this route.  The chain that opened
+    the blob is the recipe, which means the report says *how* it was read
+    rather than presenting a result with no provenance.
+    """
+    if not _bare_data_or_loader(tree):
+        return []
+    try:
+        from .plugins_pass import explore_blobs
+    except ImportError:                                # pragma: no cover - layout
+        return []
+    blobs = [blob for blob, _node in _literal_blobs(tree, floor=64)]
+    if not blobs:
+        return []
+    try:
+        found = explore_blobs(blobs)
+    except RecursionError:
+        return []
+    return [Payload(recipe, data, kind) for recipe, data, kind in found]
+
+
+#: calls a data file may make without becoming a program: it ends, or it says so
+_QUIET_CALLS = frozenset({"SystemExit", "print", "exit", "quit"})
+
+
+def _bare_data_or_loader(tree: ast.AST) -> bool:
+    """Is this file trying to run something, or is it just carrying bytes?
+
+    Without this check the backend tree would "recover" the payload of any
+    ordinary program that happens to hold an archive - a zip extractor would be
+    reported as obfuscated, and its own source replaced by whatever it extracts.
+    A loader executes what it built; a data file does nothing but carry it.
+    """
+    if _has_dynamic_sink(tree):
+        return True
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+                             ast.Import, ast.ImportFrom)):
+            return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+            if name not in _QUIET_CALLS:
+                return False
+    return True
 
 
 def _sink_payloads(tree: ast.AST, ev: Evaluator) -> list[Payload]:
@@ -206,6 +257,10 @@ def find_payloads(source: str) -> list[Payload]:
                                      payload.kind)
                         for payload in recovered]
     found.extend(_builtin_uu_payloads(tree))
+    if not found:
+        # nothing in the code explains the data: hand the literals to the
+        # backend tree and let structure, not the loader, name the layers
+        found.extend(_backend_payloads(tree))
 
     # prefer a payload that really is source; among those, the biggest, because
     # a small parseable fragment (a stub) is rarely the program
@@ -249,7 +304,9 @@ def _is_program(text: str) -> bool:
     node is what lets the peeler tell "the payload" from "the layer before it".
     """
     try:
-        tree = ast.parse(text)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = ast.parse(text)
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return False
     return any(isinstance(node, _PROGRAM_NODES) for node in ast.walk(tree))
