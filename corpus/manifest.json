@@ -1,5 +1,5 @@
 {
- "cases": 184,
+ "cases": 200,
  "families": {
   "a_b64": [
    {
@@ -719,6 +719,134 @@
     "expect": "recover",
     "layers": [
      "chr-xor"
+    ],
+    "payload": "text"
+   }
+  ],
+  "au_builtins_alias": [
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib",
+     "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "av_sys_modules": [
+   {
+    "expect": "recover",
+    "layers": [
+     "bz2",
+     "b64"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "bz2",
+     "b64"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "bz2",
+     "b64"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "bz2",
+     "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "aw_getattribute": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64"
+    ],
+    "payload": "text"
+   }
+  ],
+  "ax_split_sink": [
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "zlib"
     ],
     "payload": "text"
    }

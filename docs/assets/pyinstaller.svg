@@ -32,5 +32,5 @@ font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monos
 <text x="18" y="417" fill="#8b949e">   + frozen_deob.proof.json, frozen_deob.proof.md</text>
 </g>
 <text x="18" y="462" fill="#6e7681" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5">
-captured from dist/pydecomp.py · commit 1f05f56 · pydecomp: PyInstaller CArchive → PYZ → source</text>
+captured from dist/pydecomp.py · commit 9303b43 · pydecomp: PyInstaller CArchive → PYZ → source</text>
 </svg>

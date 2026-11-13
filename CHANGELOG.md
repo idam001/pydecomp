@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Six of the seven ways to spell `exec` were invisible
+
+A research pass over current Python loader tricks turned up the obvious one this
+project had never handled: the sink does not have to be the word `exec`. The
+same call reaches the builtin through a split module name, a split attribute
+name, `__getattribute__`, `sys.modules`, `globals()['__builtins__']`, or a `join`
+of two halves - six spellings, one call, and six of the seven were missed.
+
+- `evaluator._const_str` folds the splintered strings (`"built" + "ins"`,
+  `"".join(['ex', 'ec'])`, constant f-strings), because that is the whole point of
+  writing them.
+- `dotted()` now resolves `getattr(<mod>, "<name>")`, `mod.__getattribute__("...")`,
+  `sys.modules['builtins']`, `globals()/locals()/vars()['__builtins__']` and
+  `__import__` with a computed name. One module-level `b = builtins` alias already
+  worked; the other six did not.
+- New corpus families, because a family is a claim that has to stay true:
+  `au_builtins_alias`, `av_sys_modules`, `aw_getattribute`, `ax_split_sink`.
+  Corpus **50 families / 200 cases, 200/200**, and the retrained ranking is
+  **78.0% top-1 (was 75.0%) with 1.83 decodes before the right one (was 1.62)**.
+- The random-stack harness grew three hidden-sink shapes (`hidden-sink`,
+  `split-sink`, `sys-modules`); thirteen shapes now, still **200/200 at 24
+  layers**.
+
 ### Two more ways to hide the call, and the shapes that hold them
 
 Four more loader shapes went into the fuzz — `getattr(__import__('builtins'),

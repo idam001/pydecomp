@@ -216,6 +216,15 @@ def main(argv: list[str]) -> int:
         return 2
     rows = collect(args.family)
     summary = summarise(rows)
+    # --md/--json are outputs, not conversation: write them even in gate mode,
+    # otherwise `--quiet --md docs/…` silently leaves a stale table behind
+    if args.json_out:
+        with open(args.json_out, "w", encoding="utf-8") as handle:
+            json.dump({"summary": summary, "cases": rows}, handle, indent=1, sort_keys=True)
+            handle.write("\n")
+    if args.md_out:
+        with open(args.md_out, "w", encoding="utf-8") as handle:
+            handle.write(markdown(summary))
     if args.quiet:
         # gate mode: say one thing, and fail when a case that used to be
         # recovered is not recovered any more
@@ -236,13 +245,6 @@ def main(argv: list[str]) -> int:
             for row in misses[:20]:
                 detail = row["error"] or f"recall {row['recall']:.2f} compiles={row['compiles']}"
                 print(f"  miss {row['family']}/{row['payload']}: {detail}")
-    if args.json_out:
-        with open(args.json_out, "w", encoding="utf-8") as handle:
-            json.dump({"summary": summary, "cases": rows}, handle, indent=1, sort_keys=True)
-            handle.write("\n")
-    if args.md_out:
-        with open(args.md_out, "w", encoding="utf-8") as handle:
-            handle.write(markdown(summary))
     return 0
 
 

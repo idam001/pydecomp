@@ -108,3 +108,31 @@ def test_a_loader_inside_a_class_method_is_read() -> None:
     ) % (zlib.compress(payload),)
     found = find_payloads(source)
     assert any(item.data == payload for item in found)
+
+
+SINK_SPELLINGS = (
+    "b.exec(__import__('zlib').decompress(%r))",
+    "__import__('built' + 'ins').exec(__import__('zlib').decompress(%r))",
+    "getattr(__import__('built' + 'ins'), 'ex' + 'ec')(__import__('zlib').decompress(%r))",
+    "__import__('builtins').__getattribute__('ex' + 'ec')(__import__('zlib').decompress(%r))",
+    "sys.modules['builtins'].exec(__import__('zlib').decompress(%r))",
+    "globals()['__builtins__'].exec(__import__('zlib').decompress(%r))",
+    "getattr(__import__('builtins'), ''.join(['ex', 'ec']))(__import__('zlib').decompress(%r))",
+)
+
+
+def test_a_hidden_exec_is_still_exec() -> None:
+    """Seven spellings of the same call, six of which used to be invisible.
+
+    `"built" + "ins"`, `globals()['__builtins__']`, `__getattribute__` and a
+    `join` of two halves are all routes to the builtin; the point of spelling it
+    that way is to defeat a text scan, not to change what runs.
+    """
+    import zlib
+
+    payload = b"def hidden_again():\n    return 11\n"
+    blob = zlib.compress(payload)
+    for spelling in SINK_SPELLINGS:
+        source = "import sys, builtins\n_b = builtins\n" + (spelling % blob) + "\n"
+        found = find_payloads(source)
+        assert any(item.data == payload for item in found), spelling

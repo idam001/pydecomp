@@ -19,6 +19,41 @@ from ..limits import EXEC_SINKS, MAX_LOOP_ROUNDS
 #: inside a function would be cut off exactly where it matters.
 DEFAULT_BUDGET = MAX_LOOP_ROUNDS + 10000
 
+def _const_str(node: ast.AST) -> str | None:
+    """A string constant, including the splintered spellings loaders use.
+
+    ``"built" + "ins"``, ``"".join(["ex", "ec"])`` and an f-string of constants are
+    all the same string; a loader writes them that way so that a plain text scan
+    for ``exec`` finds nothing.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _const_str(node.left)
+        right = _const_str(node.right)
+        if left is not None and right is not None:
+            return left + right
+        return None
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            piece = _const_str(value) if isinstance(value, ast.Constant) else (
+                _const_str(value.value) if isinstance(value, ast.FormattedValue) else None)
+            if piece is None:
+                return None
+            parts.append(piece)
+        return "".join(parts)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+            and node.func.attr == "join" and node.args:
+        sep = _const_str(node.func.value)
+        sequence = node.args[0]
+        if sep is not None and isinstance(sequence, (ast.List, ast.Tuple)):
+            pieces = [_const_str(item) for item in sequence.elts]
+            if all(piece is not None for piece in pieces):
+                return sep.join(piece for piece in pieces if piece is not None)
+    return None
+
+
 class Evaluator:
     """Evaluate *pure* expressions only. Anything else raises EvalUnsafe."""
 
@@ -36,24 +71,47 @@ class Evaluator:
         if isinstance(node, ast.Attribute):
             base = self.dotted(node.value)
             return f"{base}.{node.attr}"
+        if isinstance(node, ast.Subscript):
+            # sys.modules['builtins'].exec  /  globals()['__builtins__'].exec
+            # - how a loader reaches the builtins without ever importing them
+            key = _const_str(node.slice)
+            if key is not None:
+                try:
+                    base = self.dotted(node.value)
+                except EvalUnsafe:
+                    base = ""
+                if base == "sys.modules" and key.split(".")[0] in MODULE_NAMES:
+                    return key.split(".")[0]
+                if base in ("globals()", "locals()", "vars()") and key == "__builtins__":
+                    return "builtins"
+            raise EvalUnsafe("subscript in attribute chain")
         if isinstance(node, ast.Call):
             # __import__('zlib')  /  __import__('base64').b64decode
             f = self.dotted(node.func) if not isinstance(node.func, ast.Call) else ""
             if f in ("__import__", "importlib.import_module"):
-                if node.args and isinstance(node.args[0], ast.Constant) \
-                        and isinstance(node.args[0].value, str):
-                    mod = node.args[0].value.split(".")[0]
+                mod = _const_str(node.args[0]) if node.args else None
+                if mod is not None:
+                    mod = mod.split(".")[0]
                     if mod in MODULE_NAMES:
                         return mod
                     raise EvalUnsafe(f"import of {mod!r}")
+                raise EvalUnsafe("dynamic import")
+
+            if f in ("globals", "locals", "vars"):
+                return f"{f}()"
             # getattr(builtins, "exec")  /  getattr(__import__('zlib'), 'decompress')
             # - the spelling a loader uses when it wants the call to look dynamic
-            if f in ("getattr", "builtins.getattr"):
-                if len(node.args) == 2 and all(
-                        isinstance(a, ast.Constant) and isinstance(a.value, str)
-                        for a in node.args[1:]):
-                    base = self.dotted(node.args[0])
-                    return f"{base}.{node.args[1].value}"
+            if f in ("getattr", "builtins.getattr", "__getattribute__") \
+                    or f.endswith(".__getattribute__"):
+                if f.endswith(".__getattribute__") and getattr(node.func, "value", None) is not None:
+                    base = self.dotted(node.func.value)
+                    name = _const_str(node.args[0]) if node.args else None
+                    if name is not None:
+                        return f"{base}.{name}"
+                if len(node.args) == 2:
+                    name = _const_str(node.args[1])
+                    if name is not None:
+                        return f"{self.dotted(node.args[0])}.{name}"
                 raise EvalUnsafe("dynamic getattr")
             raise EvalUnsafe("dynamic call in attribute chain")
         if isinstance(node, ast.Subscript):

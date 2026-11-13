@@ -243,6 +243,10 @@ FAMILIES: dict[str, dict] = {
                             "payload": "marshal"},
     "ar_deep_twelve": {"layers": ("b64", "zlib") * 6, "tail": "exec"},
     "as_string_array": {"layers": (), "tail": "array"},
+    "au_builtins_alias": {"layers": ("zlib", "b64"), "sink": "builtins_alias"},
+    "av_sys_modules": {"layers": ("bz2", "b64"), "sink": "sys_modules"},
+    "aw_getattribute": {"layers": ("b64",), "sink": "getattribute"},
+    "ax_split_sink": {"layers": ("zlib",), "sink": "split"},
     "at_chr_arith": {"layers": (), "tail": "chr_arith"},
 
 
@@ -273,6 +277,30 @@ def cook(payload: bytes, layers: tuple[str, ...]) -> tuple[bytes, list[str]]:
     for name in layers:
         blob = OPS[name][0](blob)
     return blob, list(layers)
+
+
+#: spellings of `exec` that a loader uses so that a plain text scan misses it.
+#: Each is the same call; only the route to the builtin changes.
+SINK_SPELLINGS = {
+    "builtins_alias": ("import builtins\n_b = builtins\n", "_b.exec"),
+    "sys_modules": ("import sys\n", "sys.modules['builtins'].exec"),
+    "getattribute": ("", "__import__('builtins').__getattribute__('ex' + 'ec')"),
+    "split": ("", "getattr(__import__('built' + 'ins'), 'ex' + 'ec')"),
+}
+
+
+def _hide_sink(loader: str, sink: str) -> str:
+    """Rewrite the trailing ``exec(...)`` into a spelling that hides it."""
+    header, spelling = SINK_SPELLINGS[sink]
+    lines = loader.rstrip("\n").splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        line = lines[index].strip()
+        if line.startswith("exec(") and line.endswith(")"):
+            lines[index] = f"{spelling}{line[4:]}"
+            break
+    else:
+        return loader
+    return header + "\n".join(lines) + "\n"
 
 
 def loader_for(cooked: bytes, layers: tuple[str, ...], tail: str) -> str:
@@ -563,6 +591,10 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
     else:
         cooked, truth_layers = cook(raw, layers)
         loader = loader_for(cooked, layers, "exec")
+
+    sink = spec.get("sink")
+    if sink:
+        loader = _hide_sink(loader, sink)
 
     truth = {
         "family": name,

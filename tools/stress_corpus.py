@@ -150,6 +150,14 @@ def wrap(loader: str, name: str) -> str:
     if name == "class":
         return ("class _Loader:\n    def run(self):\n"
                 + _indent(_indent(loader.rstrip("\n"))) + "\n\n_Loader().run()\n")
+    if name == "hidden-sink":
+        return (_stages(loader)
+                + "import builtins\n_b = builtins\n_b.exec(_p)\n")
+    if name == "split-sink":
+        return (_stages(loader)
+                + "getattr(__import__('built' + 'ins'), 'ex' + 'ec')(_p)\n")
+    if name == "sys-modules":
+        return _stages(loader) + "import sys\nsys.modules['builtins'].exec(_p)\n"
     if name == "reversed-lines":
         lines = loader.splitlines()
         body = ", ".join(repr(line + "\n") for line in reversed(lines))
@@ -162,7 +170,8 @@ DEPTHS = (1, 2, 3, 4, 6, 8, 12, 16, 20, 24)
 
 
 WRAPPERS = ("bare", "bare", "function", "decoy", "chunks", "reversed-lines",
-            "getattr", "dispatch", "while-driver", "class")
+            "getattr", "dispatch", "while-driver", "class",
+            "hidden-sink", "split-sink", "sys-modules")
 
 
 def build(seed: int, run: int, depth_max: int = 12) -> tuple[str, bytes, str, str]:
