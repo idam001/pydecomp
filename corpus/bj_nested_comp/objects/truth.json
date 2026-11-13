@@ -1,0 +1,11 @@
+{
+ "expect": "recover",
+ "family": "bj_nested_comp",
+ "layers": [
+  "b64",
+  "nested-comprehension"
+ ],
+ "payload": "objects",
+ "payload_sha256": "44142e6908aad02dce85d44ea85eda1772ac8a13a78e8d5773a5beac43d2e2c5",
+ "tail": "nested_comp"
+}

@@ -1,5 +1,5 @@
 {
- "cases": 236,
+ "cases": 264,
  "families": {
   "a_b64": [
    {
@@ -1163,6 +1163,244 @@
     "expect": "recover",
     "layers": [
      "hex-xor"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bh_dict_join": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "dict-join"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "dict-join"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "dict-join"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "dict-join"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bi_zip_join": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip-join"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip-join"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip-join"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "zip-join"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bj_nested_comp": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "nested-comprehension"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "nested-comprehension"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "nested-comprehension"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "nested-comprehension"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bk_sorted_values": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "sorted-values"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "sorted-values"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "sorted-values"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "sorted-values"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bl_reduce_join": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "reduce-join"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "reduce-join"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "reduce-join"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "reduce-join"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bm_chr_join": [
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "chr-join"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "chr-join"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "chr-join"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "b64",
+     "chr-join"
+    ],
+    "payload": "text"
+   }
+  ],
+  "bn_accumulate": [
+   {
+    "expect": "recover",
+    "layers": [
+     "accumulate",
+     "xor(key=0x5a)"
+    ],
+    "payload": "arith"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "accumulate",
+     "xor(key=0x5a)"
+    ],
+    "payload": "io"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "accumulate",
+     "xor(key=0x5a)"
+    ],
+    "payload": "objects"
+   },
+   {
+    "expect": "recover",
+    "layers": [
+     "accumulate",
+     "xor(key=0x5a)"
     ],
     "payload": "text"
    }

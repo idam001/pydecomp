@@ -1,0 +1,11 @@
+{
+ "expect": "recover",
+ "family": "bk_sorted_values",
+ "layers": [
+  "b64",
+  "sorted-values"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "sorted_values"
+}

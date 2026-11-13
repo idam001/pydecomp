@@ -1,0 +1,11 @@
+{
+ "expect": "recover",
+ "family": "bl_reduce_join",
+ "layers": [
+  "b64",
+  "reduce-join"
+ ],
+ "payload": "arith",
+ "payload_sha256": "d618aafab9217c09b11cf4fdfc50dc3f81e1c85ced6001afe92c88e518a38bea",
+ "tail": "reduce_join"
+}

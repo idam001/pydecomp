@@ -1,0 +1,3 @@
+import base64
+_D = {0: b'Y2xhc3MgU2Vz', 12: b'c2lvbjoKICAg', 24: b'IGRlZiBfX2lu', 36: b'aXRfXyhzZWxm', 48: b'LCBob3N0LCBw', 60: b'b3J0PTQ0Myk6', 72: b'CiAgICAgICAg', 84: b'c2VsZi5ob3N0', 96: b'ID0gaG9zdAog', 108: b'ICAgICAgIHNl', 120: b'bGYucG9ydCA9', 132: b'IHBvcnQKCiAg', 144: b'ICBkZWYgdXJs', 156: b'KHNlbGYpOgog', 168: b'ICAgICAgIHJl', 180: b'dHVybiBmJ2h0', 192: b'dHBzOi8ve3Nl', 204: b'bGYuaG9zdH06', 216: b'e3NlbGYucG9y', 228: b'dH0vJwoKZGVm', 240: b'YXVsdCA9IFNl', 252: b'c3Npb24oJ2V4', 264: b'YW1wbGUuY29t', 276: b'JykK'}
+exec(base64.b64decode(b''.join(_D[_k] for _k in sorted(_D))).decode())

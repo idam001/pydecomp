@@ -257,6 +257,13 @@ FAMILIES: dict[str, dict] = {
     "be_dict_dispatch": {"layers": ("b64",), "tail": "dict_dispatch"},
     "bf_zip_xor": {"layers": (), "tail": "zip_xor"},
     "bg_hex_xor": {"layers": (), "tail": "hex_xor"},
+    "bh_dict_join": {"layers": ("b64",), "tail": "dict_join"},
+    "bi_zip_join": {"layers": ("b64",), "tail": "zip_join"},
+    "bj_nested_comp": {"layers": ("b64",), "tail": "nested_comp"},
+    "bk_sorted_values": {"layers": ("b64",), "tail": "sorted_values"},
+    "bl_reduce_join": {"layers": ("b64",), "tail": "reduce_join"},
+    "bm_chr_join": {"layers": ("b64",), "tail": "chr_join"},
+    "bn_accumulate": {"layers": (), "tail": "accumulate"},
 
 
 }
@@ -516,6 +523,66 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
                   "exec(bytes(b ^ 0x37 for b in bytes.fromhex(_h)).decode())\n"
                   % bytes(byte ^ 0x37 for byte in raw).hex())
         truth_layers = ["hex-xor"]
+    elif tail == "dict_join":
+        cooked, truth_layers = cook(raw, layers)
+        pieces = [(index, cooked[index:index + 12])
+                  for index in range(0, len(cooked), 12)]
+        loader = ("import base64\n"
+                  + "_D = {%s}\n" % ", ".join("%d: %r" % piece for piece in pieces)
+                  + "exec(base64.b64decode(b''.join(_D[_k] for _k in sorted(_D)))"
+                    ".decode())\n")
+        truth_layers = list(truth_layers) + ["dict-join"]
+    elif tail == "zip_join":
+        cooked, truth_layers = cook(raw, layers)
+        loader = ("import base64\n"
+                  "_x = %r\n_y = %r\n"
+                  "_p = b''.join(bytes([a, b]) for a, b in zip(_x, _y + b'\\x00'))\n"
+                  "exec(base64.b64decode(_p.rstrip(b'\\x00')).decode())\n"
+                  % (cooked[::2], cooked[1::2]))
+        truth_layers = list(truth_layers) + ["zip-join"]
+    elif tail == "nested_comp":
+        cooked, truth_layers = cook(raw, layers)
+        groups = [[cooked[index:index + 10]] for index in range(0, len(cooked), 10)]
+        loader = ("import base64\n"
+                  "_L = %r\n"
+                  "_p = b''.join(part for group in _L for part in group)\n"
+                  "exec(base64.b64decode(_p).decode())\n" % (groups,))
+        truth_layers = list(truth_layers) + ["nested-comprehension"]
+    elif tail == "sorted_values":
+        cooked, truth_layers = cook(raw, layers)
+        pieces = [(index, cooked[index:index + 8])
+                  for index in range(0, len(cooked), 8)]
+        loader = ("import base64\n"
+                  + "_D = {%s}\n" % ", ".join("%d: %r" % piece
+                                             for piece in reversed(pieces))
+                  + "_p = b''.join(_D[_k] for _k in sorted(_D.keys()))\n"
+                    "exec(base64.b64decode(_p).decode())\n")
+        truth_layers = list(truth_layers) + ["sorted-values"]
+    elif tail == "reduce_join":
+        cooked, truth_layers = cook(raw, layers)
+        chunks = [cooked[index:index + 20] for index in range(0, len(cooked), 20)]
+        loader = ("import base64\nfrom functools import reduce\n"
+                  "_C = %r\n"
+                  "_p = reduce(lambda a, b: a + b, _C)\n"
+                  "exec(base64.b64decode(_p).decode())\n" % (chunks,))
+        truth_layers = list(truth_layers) + ["reduce-join"]
+    elif tail == "chr_join":
+        cooked, truth_layers = cook(raw, layers)
+        numbers = ", ".join(str(byte) for byte in cooked)
+        loader = ("import base64\n"
+                  "_s = ''.join(chr(n) for n in [%s])\n"
+                  "exec(base64.b64decode(_s).decode())\n" % numbers)
+        truth_layers = list(truth_layers) + ["chr-join"]
+    elif tail == "accumulate":
+        key = 0x5A
+        numbers = ", ".join(str(byte ^ key) for byte in raw)
+        loader = ("_n = [%s]\n"
+                  "_b = bytearray()\n"
+                  "for _c in _n:\n"
+                  "    _b.append(_c ^ 0x%X)\n"
+                  "exec(bytes(_b).decode())\n" % (numbers, key))
+        cooked = raw
+        truth_layers = ["accumulate", "xor(key=0x5a)"]
     elif tail == "zip2":
         inner = os.path.join(folder, ".inner.zip")
         info = zipfile.ZipInfo("payload.py", date_time=(1980, 1, 1, 0, 0, 0))
