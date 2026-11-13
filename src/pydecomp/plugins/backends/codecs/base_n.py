@@ -51,6 +51,39 @@ def _sniffer(codec: str):
     return sniff
 
 
+#: RFC 9285's alphabet, in the order the decoder indexes it
+B45_ALPHABET = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
+
+#: ZeroMQ's alphabet
+Z85_ALPHABET = (b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                b".-:+=^!/*?&<>()[]{}@%$#")
+
+
+def _forge_b45(payload: bytes) -> bytes:
+    out = bytearray()
+    for index in range(0, len(payload) - len(payload) % 2, 2):
+        value = payload[index] * 256 + payload[index + 1]
+        out.extend((B45_ALPHABET[value % 45],
+                    B45_ALPHABET[(value // 45) % 45],
+                    B45_ALPHABET[value // 2025]))
+    if len(payload) % 2:
+        out.extend((B45_ALPHABET[payload[-1] % 45], B45_ALPHABET[payload[-1] // 45]))
+    return bytes(out)
+
+
+def _forge_z85(payload: bytes) -> bytes:
+    padded = payload + b"\x00" * (-len(payload) % 4)
+    out = bytearray()
+    for index in range(0, len(padded), 4):
+        value = int.from_bytes(padded[index:index + 4], "big")
+        group = bytearray(5)
+        for slot in range(4, -1, -1):
+            value, digit = divmod(value, 85)
+            group[slot] = Z85_ALPHABET[digit]
+        out.extend(group)
+    return bytes(out)
+
+
 def _forger(codec: str):
     alphabet = ALPHABETS[codec].encode()
 
@@ -69,6 +102,7 @@ def _forger(codec: str):
 BACKENDS = [
     Backend(codec, "codec", 1, _opener(codec), _sniffer(codec),
             f"{codec} with its documented alphabet",
-            forge=_forger(codec) if codec in ("b58", "b62") else None)
+            forge={"b58": _forger("b58"), "b62": _forger("b62"),
+                   "b45": _forge_b45, "z85": _forge_z85}[codec])
     for codec in ("b58", "b62", "b45", "z85")
 ]

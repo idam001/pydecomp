@@ -64,7 +64,25 @@ def selftest() -> int:
     ok("native layer is ready — options 2 and 3 will work")
     return 0
 
+def _speakable() -> None:
+    """Make the terminal able to print the interface, whatever the locale says.
+
+    Under ``LC_ALL=C`` Python writes ASCII and every glyph in the interface
+    raises.  The bytes are UTF-8 either way; the locale only decides whether
+    Python admits it.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):      # pragma: no cover - closed stream
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _speakable()
     ap = argparse.ArgumentParser(
         prog="pydecomp",
         description="Deobfuscate a packed Python script and save the result.")
@@ -210,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
                            pyarmor_key=args.pyarmor_key,
                            fetch_iocs=args.fetch_iocs,
                            html_report=args.html)
+        if path is None and not os.path.exists(args.file):
+            return 2                       # the name resolved nowhere: say so in the code
         if path and args.verify:
             try:
                 try:

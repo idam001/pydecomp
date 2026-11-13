@@ -92,8 +92,13 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
 
     name = os.path.basename(src_path)
     raw_size = os.path.getsize(src_path)
-    with open(src_path, "rb") as fh:
-        raw = fh.read()
+    try:
+        with open(src_path, "rb") as fh:
+            raw = fh.read()
+    except OSError as exc:
+        print("   " + paint("\u2718", RED) + " "
+              + paint(f"cannot be read: {src_path} ({exc.strerror})", RED))
+        return None
     digest = hashlib.sha256(raw).hexdigest()
 
     # Protector context: if a pyarmor_runtime library sits beside the sample,
