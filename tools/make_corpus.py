@@ -308,203 +308,22 @@ def _hide_sink(loader: str, sink: str) -> str:
 
 
 def loader_for(cooked: bytes, layers: tuple[str, ...], tail: str) -> str:
+    """The nested decoder expression a loader writes, ending in ``tail``.
+
+    Only the four plain endings live here.  Every shaped loader (a loop, a jump
+    table, a string builder, an alphabet) is written by ``build_case`` next to
+    the bytes it needs, so there is one implementation of each, not two.
+    """
     expression = "_p"
     for name in reversed(layers):
         expression = OPS[name][2].format(x=expression)
-    if tail == "exec":
-        body = f"exec({expression})\n"
-    elif tail == "eval":
-        # eval(compile(...)): the payload is handed to a compiler, not to exec
-        body = f"_code = compile({expression}, '<payload>', 'exec')\n"
-    elif tail == "table":
-        body = ("_data = base64.b64decode(_p)\n"
-                "_text = bytes(b ^ 0x2B for b in _data).decode('utf-8')\n"
-                "exec(_text)\n")
-    elif tail == "inline_import":
-        cooked, truth_layers = cook(raw, layers)
-        loader = ("_p = %r\n"
-                  "exec(__import__('zlib').decompress("
-                  "__import__('base64').b64decode(_p)))\n" % cooked)
-    elif tail == "lambda":
-        cooked, truth_layers = cook(raw, layers)
-        loader = ("import base64\n"
-                  "_p = %r\n"
-                  "_ = lambda __: base64.b64decode(__)\n"
-                  "exec((_)(_p))\n" % cooked)
-    elif tail == "lambda_reverse":
-        cooked = OPS["b64"][0](raw)[::-1]
-        truth_layers = ["reverse", "base64"]
-        loader = ("import base64\n"
-                  "_p = %r\n"
-                  "_ = lambda __: base64.b64decode(__[::-1])\n"
-                  "exec((_)(_p))\n" % cooked)
-    elif tail == "nested":
-        # TrustedSec's bytecode stack: marshal inside marshal inside zlib, each
-        # level a loader that loads the next
-        level = marshal.dumps(compile(source, "payload.py", "exec"))
-        for _ in range(3):
-            wrapper = b"from marshal import loads\nexec(loads(%r))" % level
-            level = marshal.dumps(compile(wrapper, "level", "exec"))
-        cooked = zlib.compress(level)
-        truth_layers = ["zlib", "marshal", "marshal", "marshal"]
-        loader = ("import zlib\nfrom marshal import loads\n"
-                  "exec(loads(zlib.decompress(%r)))\n" % cooked)
-    elif tail == "zero_width":
-        bits = "".join(
-            "".join("\u200b" if bit == "0" else "\u200c" for bit in format(byte, "08b"))
-            for byte in raw)
-        cooked = bits.encode("utf-8")
-        truth_layers = ["zero-width"]
-        loader = ("_s = %r\n"
-                  "_b = ''.join('0' if c == '\\u200b' else '1' for c in _s)\n"
-                  "exec(bytes(int(_b[i:i + 8], 2) for i in range(0, len(_b), 8))"
-                  ".decode())\n" % bits)
-    elif tail == "exec_compile":
-        cooked, truth_layers = cook(raw, layers)
-        loader = ("import base64\n"
-                  "_p = %r\n"
-                  "exec(compile(base64.b64decode(_p), '<payload>', 'exec'))\n" % cooked)
-    elif tail == "marshal_payload":
-        artifacts = compile_artifacts(source)
-        cooked, truth_layers = cook(artifacts["marshal"], layers)
-        loader = ("import base64, zlib, marshal\n"
-                  "_p = %r\n"
-                  "exec(marshal.loads(zlib.decompress(base64.b85decode(_p))))\n" % cooked)
-    elif tail == "array":
-        pieces = [raw[index:index + 24] for index in range(0, len(raw), 24)]
-        baked = ", ".join(repr(piece) for piece in pieces)
-        cooked = raw
-        truth_layers = ["string-array"]
-        loader = ("_t = [%s]\n"
-                  "exec(b''.join(_t).decode())\n" % baked)
-    elif tail == "chr_arith":
-        numbers = ", ".join(str(byte ^ 0x21) for byte in raw)
-        cooked = raw
-        truth_layers = ["chr-xor"]
-        loader = ("_n = [%s]\n"
-                  "exec(bytes([c ^ 0x21 for c in _n]).decode())\n" % numbers)
-    elif tail == "alphabet":
-        codec = spec["alphabet"]
-        cooked, truth_layers = cook(raw, layers)
-        if codec == "UU":
-            loader = (HEADER.format(blob=repr(cooked))
-                      + "import binascii\n"
-                        "exec(binascii.a2b_uu(_p).decode())\n")
-        else:
-            alphabet = {"B58": B58, "B62": B62, "B45": B45, "Z85": Z85}[codec]
-            if codec == "Z85":
-                loader = (HEADER.format(blob=repr(cooked))
-                          + f"_A = {alphabet!r}\n"
-                            "_o = bytearray()\n"
-                            "for _i in range(0, len(_p), 5):\n"
-                            "    _v = 0\n"
-                            "    for _c in _p[_i:_i + 5]:\n"
-                            "        _v = _v * 85 + _A.index(chr(_c))\n"
-                            "    _o.extend(_v.to_bytes(4, 'big'))\n"
-                            "exec(bytes(_o).rstrip(b'\\x00').decode())\n")
-                truth_layers = list(truth_layers)
-                with open(os.path.join(folder, "sample.py"), "w", encoding="utf-8") as handle:
-                    handle.write(loader)
-                with open(os.path.join(folder, "payload.py"), "w", encoding="utf-8") as handle:
-                    handle.write(source)
-                truth = {"family": name, "payload": payload_name,
-                         "payload_sha256": hashlib.sha256(raw).hexdigest(),
-                         "tail": tail, "layers": truth_layers, "expect": "recover"}
-                with open(os.path.join(folder, "truth.json"), "w", encoding="utf-8") as handle:
-                    json.dump(truth, handle, indent=1, sort_keys=True)
-                    handle.write("\n")
-                return truth
-            loader = (HEADER.format(blob=repr(cooked))
-                      + f"_A = {alphabet!r}\n"
-                        "_n = 0\n"
-                        "for _c in _p.decode():\n"
-                        "    _n = _n * len(_A) + _A.index(_c)\n"
-                        "exec(_n.to_bytes((_n.bit_length() + 7) // 8, 'big')"
-                        ".decode())\n")
-        truth_layers = list(truth_layers)
-    elif tail == "loop_replay":
-        cooked, truth_layers = cook(raw, layers)
-        undo = "_d"
-        for layer in reversed(layers):
-            undo = {"b64": "base64.b64decode({x})", "zlib": "zlib.decompress({x})",
-                    "lzma": "lzma.decompress({x})", "gzip": "gzip.decompress({x})",
-                    "bz2": "bz2.decompress({x})"}[layer].format(x=undo)
-        loader = (HEADER.format(blob=repr(cooked))
-                  + "_d = _p\n"
-                    "for _ in range(1):\n"
-                    f"    _d = {undo}\n"
-                    "exec(_d.decode())\n")
-        truth_layers = list(truth_layers)
-    elif tail == "str_builder":
-        cooked = raw
-        loader = ("_n = %r\n"
-                  "_s = ''\n"
-                  "for _c in _n:\n"
-                  "    _s += chr(_c)\n"
-                  "exec(_s)\n" % list(raw))
-        truth_layers = ["str-builder"]
-    elif tail == "map_chr":
-        cooked = raw
-        loader = ("_n = %r\n"
-                  "exec(''.join(map(chr, _n)))\n" % list(raw))
-        truth_layers = ["map-chr"]
-    elif tail == "int_bytes":
-        number = int.from_bytes(raw, "big")
-        cooked = raw
-        loader = ("_n = %d\n"
-                  "_b = _n.to_bytes((_n.bit_length() + 7) // 8, 'big')\n"
-                  "exec(_b.decode())\n" % number)
-        truth_layers = ["big-int"]
-    elif tail == "chunks":
-        pieces = [raw[index:index + 17] for index in range(0, len(raw), 17)]
-        cooked = raw
-        loader = ("_c = %r\n"
-                  "exec(''.join(_c))\n" % [piece.decode("utf-8", "surrogateescape")
-                                           for piece in pieces])
-        truth_layers = ["chunk-join"]
-    elif tail == "while_break":
-        cooked, truth_layers = cook(raw, layers)
-        loader = (HEADER.format(blob=repr(cooked))
-                  + "_d = None\n"
-                    "while True:\n"
-                    "    _d = zlib.decompress(base64.b64decode(_p))\n"
-                    "    break\n"
-                    "exec(_d.decode())\n")
-        truth_layers = list(truth_layers)
-    elif tail == "dict_dispatch":
-        cooked, truth_layers = cook(raw, layers)
-        loader = (HEADER.format(blob=repr(cooked))
-                  + "_T = {0: lambda: base64.b64decode(_p)}\n"
-                    "_S = 0\n"
-                    "_v = None\n"
-                    "while _S in _T:\n"
-                    "    _v = _T[_S]()\n"
-                    "    _S += 1\n"
-                    "exec(_v.decode())\n")
-        truth_layers = list(truth_layers)
-    elif tail == "zip_xor":
-        key = b"\x1d\x5b\x93"
-        mixed = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(raw))
-        cooked = raw
-        loader = ("_k = %r\n"
-                  "_m = %r\n"
-                  "exec(bytes(a ^ b for a, b in zip(_m, _k * (len(_m) // len(_k) + 1)))"
-                  ".decode())\n" % (list(key), list(mixed)))
-        truth_layers = ["zip-xor"]
-    elif tail == "hex_xor":
-        cooked = raw
-        loader = ("_h = %r\n"
-                  "exec(bytes(b ^ 0x37 for b in bytes.fromhex(_h)).decode())\n"
-                  % bytes(byte ^ 0x37 for byte in raw).hex())
-        truth_layers = ["hex-xor"]
-    elif tail == "zip2":
-        body = f"_inner = {expression}\n"
-    elif tail == "marshal":
-        body = f"_code = marshal.loads({expression})\n"
-    elif tail == "pychead":
-        body = f"_code = marshal.loads(({expression})[16:])\n"
-    else:
-        body = f"_data = {expression}\n"
+    body = {
+        "exec": f"exec({expression})\n",
+        # eval(compile(...)) hands the payload to a compiler, not to exec
+        "eval": f"_code = compile({expression}, '<payload>', 'exec')\n",
+        "marshal": f"_code = marshal.loads({expression})\n",
+        "pychead": f"_code = marshal.loads(({expression})[16:])\n",
+    }.get(tail, f"_data = {expression}\n")
     return HEADER.format(blob=repr(cooked)) + body
 
 
@@ -730,8 +549,10 @@ def build_case(folder: str, name: str, payload_name: str, source: str) -> dict:
         loader = loader_for(cooked, layers, "eval")
     elif tail == "zip":
         buffer = os.path.join(folder, ".payload.zip")
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("payload.py", source)
+        info = zipfile.ZipInfo("payload.py", date_time=(1980, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(info, source)
         with open(buffer, "rb") as handle:
             packed = handle.read()
         os.unlink(buffer)
