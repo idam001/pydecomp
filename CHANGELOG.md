@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The rewriters are now checked by running the code, not by reading it
+
+Every pass under `polish/` rewrites structure that carries meaning - a loop, a
+branch, an inlined call, a propagated constant. All of them were tested
+structurally ("does the output contain `for _item in items`"), and structure is
+not behaviour: the mutable-literal propagation bug in `docs/UPGRADES.md` passed
+every gate this project had, because the rewritten code parsed, compiled, looked
+right and returned `[]`.
+
+`tools/diff_polish.py` compares results instead. It applies one pass to each of 26
+generated programs, then executes the original and the rewritten program in
+separate `-I` interpreter processes over a table of inputs and compares what they
+return. Fixtures only: the sample is never involved. New gate, `differential`:
+**26 fixtures × 11 passes, 0 divergences**, and **32/32 gates green**.
+
+- **It found a real bug, on its first run.** `propagate_constants` required a name
+  to be bound once, but never that the binding came *before* the use, and it
+  treated a function parameter as a constant once the body reassigned it:
+
+  ```python
+  def run(n):
+      return n + 1
+      n = 99        # dead, below the return
+  ```
+
+  became `return 99 + 1` - `100` for every input, from a function that returns
+  `n + 1`. Fixed in `polish/inline.py`: a name is substituted only in the
+  statements that follow its binding, and a parameter is never a constant. Nine
+  unit tests in `tests/unit/test_propagate_order.py` pin both rules.
+- **The harness proves itself first.** Before comparing anything it plants a wrong
+  rewrite (`a + b` -> `a - b`) and refuses to run if that divergence goes
+  uncaught, so a green run means the comparison works. Every pass must also have
+  changed at least one fixture: a pass that rewrote nothing was not tested, and
+  the gate says so rather than counting it as clean.
+
+Measured on this checkout: **401 unit tests**, **32 gates**, single file
+418,566 B, corpus 200/200, stress 200/200, bench 32/44 semantic.
+
 ### The arithmetic rules stopped being a list and became a proof
 
 Mixed boolean arithmetic was undone by nine rules hand-written next to the pass

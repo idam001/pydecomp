@@ -18,7 +18,7 @@ from a bare checkout with no install at all.
 Everything is verified by scripts that print a count, not by opinion:
 
 ```bash
-python3 tools/run_gates.py             # all nine, one table, ~10 s
+python3 tools/run_gates.py             # all of them, one table, ~110 s
 python3 tools/run_gates.py v8 probes   # a subset
 python3 tools/run_gates.py --list
 python3 tools/run_gates.py --json g.json

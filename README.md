@@ -290,7 +290,7 @@ The engine is a pipeline, and every stage reports what it did:
 ## Measured results
 
 Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-31 gates, plus 392 unit tests:
+32 gates, plus 401 unit tests:
 
 | Gate | Result |
 |---|---|
@@ -299,18 +299,19 @@ Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 
 | `test_v6` — policy chatter, fallbacks, round trip | all good |
 | `test_v7` — menu and prompts | all good |
 | `test_v8` — polish, folding, demangling | 44/44 |
+| `differential` — every polish pass returns what the original returns | 26 fixtures × 11 passes, 0 divergences |
 | `test_identity` — instruction-identical round trips | 47/47 |
 | `test_probes` — obfuscator shapes | 37/37 |
-| `test_native` — Cython/ELF recovery | 41/41 |
+| `test_native` — Cython/ELF recovery | all good |
 | `test_proof` — proof schema, `--strict` exit codes | all good |
 | `test_pyarmor` — PyArmor 8/9 static unpack, CLI | all good |
 | `test_freezers` — six freezers + PyInstaller PYZ | all good |
 | `test_agents` — MCP handshake/tools, plugins, cross-impl | all good |
-| `obf_bench` — hardest-obfuscation suite | 33/44 semantic · 11/11 rebuilt as source |
+| `obf_bench` — hardest-obfuscation suite | 32/44 semantic · 11/11 rebuilt as source |
 | `bench_core` — peel/decompile/AES budgets | 3/3 budgets met |
 | `examples` — the six worked examples | 6/6 recovered |
 | `corpus` — 50 families × 4 payloads | 200/200 recovered |
-| `learn` — trained decoder ranking | 37.5% → 75.0% top-1, 7.81 → 1.62 decodes |
+| `learn` — trained decoder ranking | 39% → 78% top-1, 7.50 → 1.83 decodes |
 | `stress` — 200 random stacks, up to 24 layers, 18 codecs, 13 loader shapes | 200/200 recovered (floor 196) |
 
 Real samples (byte-for-byte stable across releases):

@@ -168,12 +168,22 @@ def propagate_constants(tree) -> tuple[int, dict]:
         global_env: dict = {}
         replaced = 0
 
-        def scope(body, inherited, is_module=False):
+        def scope(body, inherited, is_module=False, banned=frozenset()):
             nonlocal replaced
             bindings = _scope_bindings(body)
             local_counts = _scope_counts(body)
+            # where each binding sits, so a name is only substituted *after* it
+            # is bound: `return n + 1` must not see an `n = 99` further down
+            placed: dict[str, int] = {}
+            for index, stmt in enumerate(body):
+                if isinstance(stmt, _ast.Assign) and len(stmt.targets) == 1 \
+                        and isinstance(stmt.targets[0], _ast.Name):
+                    placed.setdefault(stmt.targets[0].id, index)
             env = dict(inherited)
             for name, value in bindings.items():
+                if name in banned:
+                    # a parameter is an input, whatever the body later does to it
+                    continue
                 if local_counts.get(name, 0) != 1:
                     continue
                 if is_module and counts.get(name, 0) != 1:
@@ -187,13 +197,17 @@ def propagate_constants(tree) -> tuple[int, dict]:
                     continue          # mutable: aliasing and mutation matter
                 env[name] = resolved
             if env:
-                sub = _ScopeSub(env)
                 for index, stmt in enumerate(body):
                     if isinstance(stmt, (_ast.FunctionDef, _ast.AsyncFunctionDef,
                                         _ast.ClassDef)):
                         continue
+                    available = {name: value for name, value in env.items()
+                                 if placed.get(name, -1) < index}
+                    if not available:
+                        continue
+                    sub = _ScopeSub(available)
                     body[index] = sub.visit(stmt)
-                replaced += sub.replaced
+                    replaced += sub.replaced
             return env
 
         global_env = scope(tree.body, {}, is_module=True)
@@ -207,7 +221,7 @@ def propagate_constants(tree) -> tuple[int, dict]:
                              {arg.arg for arg in stmt.args.kwonlyargs}
                     for name in shadow:
                         local.pop(name, None)
-                    scope(stmt.body, local)
+                    scope(stmt.body, local, banned=frozenset(shadow))
                     descend(stmt.body, inherited)
                 elif isinstance(stmt, (_ast.If, _ast.For, _ast.While, _ast.With,
                                        _ast.Try)):

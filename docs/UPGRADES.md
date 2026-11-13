@@ -39,15 +39,36 @@ see P0-1.
 
 ## P0 — correctness: nothing should be able to ship wrong code quietly
 
-1. **A differential-execution harness for the rewriters.**
-   `unflatten`, `loops`, `mba`, `opaque`, `inline` and `dead` all rewrite
-   semantics-bearing structure, and every one of them is tested structurally
-   ("does the output contain `for _item in items`"), never behaviourally. The
-   mutable-literal bug above passes every existing gate.
-   *Build:* generate small programs, apply one pass, run the original and the
-   rewritten function over a table of inputs **in a separate process against
-   generated fixtures only** (never samples), compare results. Any divergence is
-   a gate failure. ~1 day; highest value on this page.
+1. ~~**A differential-execution harness for the rewriters.**~~
+   **Done** — `tools/diff_polish.py`, gate `differential`
+   (`26 fixtures × 11 passes, 0 divergences`).
+
+   Every pass that rewrites structure — `mba`, `opaque`, `dead`, `eval`, `fold`,
+   `inline`, `propagate`, `aliases`, `loops`, `unflatten`, `strarrays` — is now
+   applied to 26 generated programs and the original and rewritten program are
+   **executed** in separate `-I` interpreter processes over a table of inputs; the
+   returned values are compared. Fixtures only: the sample is never involved.
+
+   Two properties keep the gate from going quiet. It plants a wrong rewrite
+   (`a + b` → `a - b`) and refuses to run if it does not catch it, and every pass
+   must have changed at least one fixture, so a pass that was not exercised fails
+   the gate instead of counting as clean.
+
+   It found a real bug on its first run, which no existing gate had:
+
+   ```python
+   def run(n):
+       return n + 1
+       n = 99            # dead, below the return
+   ```
+
+   `propagate_constants` substituted the later binding backwards into the return:
+   `return 99 + 1` → `100` for every input. The pass required a name to be bound
+   once but never that the binding *preceded* the use, and it treated a function
+   parameter as a constant once the body reassigned it. Both rules are enforced
+   now (`polish/inline.py`), with nine unit tests in
+   `tests/unit/test_propagate_order.py` pinning the ordering and the parameter
+   case.
 
 2. **Coverage should fail loudly, not just report.**
    `--diff` printed `verdict: complete` for the broken `report()` above: the
