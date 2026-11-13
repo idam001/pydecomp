@@ -14,7 +14,7 @@ license: MIT
 version: 1.0.0
 date-released: "2026-11-01"
 repository-code: "https://github.com/idam001/pydecomp"
-url: "https://pydecomp.github.io/pydecomp/"
+url: "https://idam001.github.io/pydecomp/"
 keywords:
   - deobfuscation
   - reverse engineering

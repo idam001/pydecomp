@@ -60,7 +60,7 @@ docs = [
 
 [project.urls]
 Homepage = "https://github.com/idam001/pydecomp"
-Documentation = "https://pydecomp.github.io/pydecomp/"
+Documentation = "https://idam001.github.io/pydecomp/"
 Changelog = "https://github.com/idam001/pydecomp/blob/main/CHANGELOG.md"
 Issues = "https://github.com/idam001/pydecomp/issues"
 Security = "https://github.com/idam001/pydecomp/blob/main/SECURITY.md"
