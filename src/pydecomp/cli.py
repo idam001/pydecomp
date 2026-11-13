@@ -39,6 +39,16 @@ def selftest() -> int:
     where = "embedded" if embedded or not location else os.path.dirname(location)
     rows.append(("native", f"{getattr(native, '__version__', '?')} ({where})", GREEN))
     rows.append(("menu 1", "scripts: loaders, names, ciphers, marshal, pyc, IOCs", GREEN))
+    try:
+        from .plugins.backends import backends as _backends
+        kinds = {}
+        for backend in _backends():
+            kinds[backend.kind] = kinds.get(backend.kind, 0) + 1
+        rows.append(("backends", f"{len(_backends())} across "
+                     + ", ".join(f"{kind} {count}" for kind, count in sorted(kinds.items())),
+                     GREEN))
+    except Exception as exc:                        # noqa: BLE001 - report, do not crash
+        rows.append(("backends", f"{type(exc).__name__}: {exc}", RED))
     rows.append(("menu 2", "Cython: tables, tiers S/B/A, payloads", GREEN))
     rows.append(("menu 3", "ELF: marshal, pyc, zip, PyInstaller, zlib/bz2/xz", GREEN))
     print()
@@ -66,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="native mode: cython source recovery, ELF payload hunt, or auto")
     ap.add_argument("--selftest", action="store_true",
                     help="check the install: native layer, backends, menu options")
+    ap.add_argument("--backends", action="store_true",
+                    help="list the decoder backends and exit")
     ap.add_argument("--verify", action="store_true",
                     help="recompile the result and report instruction identity")
     ap.add_argument("--dry-run", action="store_true",
@@ -146,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return 0 if result["ok"] else 4
 
+    if getattr(args, "backends", False):
+        from .plugins.backends import describe
+        for line in describe():
+            print(line)
+        return 0
     if args.selftest:
         return selftest()
 

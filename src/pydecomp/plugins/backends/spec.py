@@ -12,7 +12,8 @@ has to survive a structural check before anyone sees it.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
 #: no backend is handed a blob, or returns one, larger than this
@@ -75,14 +76,27 @@ class Backend:
 
 @dataclass
 class Budget:
-    """Work an exploration may spend.  Running out is reported, not hidden."""
+    """Work an exploration may spend.  Running out is reported, not hidden.
+
+    Two limits, because they fail differently: ``opens`` bounds a search on a
+    slow phone where each open is cheap but there are thousands of them, and
+    ``seconds`` bounds a search on a fast machine where one open (RC4 over a
+    megabyte, a repeating-key solve) is not.  Whichever runs out first ends the
+    search, and the caller is told that it ended.
+    """
 
     opens: int = 1024
+    seconds: float = 30.0
+    started: float = field(default_factory=time.monotonic)
 
-    def spend(self) -> None:
-        self.opens -= 1
+    def spend(self, weight: int = 1) -> None:
+        """Charge for one attempt.  ``weight`` is the backend's cost plus one, so
+        a 255-key search costs what it costs and the cheap paths run first."""
+        self.opens -= max(1, weight)
         if self.opens < 0:
             raise Refusal("exploration budget spent")
+        if self.seconds and time.monotonic() - self.started > self.seconds:
+            raise Refusal(f"exploration took longer than {self.seconds:g}s")
 
 
 def printable_ratio(data: bytes) -> float:

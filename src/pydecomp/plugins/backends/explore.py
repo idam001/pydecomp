@@ -60,10 +60,16 @@ def explore(blob: bytes, accept, depth: int = 4, budget: Budget | None = None,
                             key=lambda backend: (-backend.worth_trying(data),
                                                  backend.cost, backend.name))
             for backend in ranked:
-                if backend.worth_trying(data) <= 0.0:
+                weight = backend.worth_trying(data)
+                if weight <= 0.0:
+                    continue
+                # a 255-key scan in the middle of a chain is a rare shape: after
+                # the first step, only search the expensive backends when the
+                # blob itself says what it is
+                if _level and backend.cost >= 3 and weight < 0.8:
                     continue
                 try:
-                    budget.spend()
+                    budget.spend(backend.cost + 1)
                 except Refusal:
                     return Result(tuple(hits), True, tried)
                 tried += 1

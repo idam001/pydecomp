@@ -138,6 +138,47 @@ def test_rc4_with_the_key_in_front():
 # chains
 # --------------------------------------------------------------------------
 
+def test_bits_spelled_out_decode():
+    backend = by_name("bits")
+    assert backend is not None
+    blob = "".join(format(byte, "08b") for byte in PAYLOAD).encode()
+    assert backend.candidates(blob)[0] == PAYLOAD
+
+
+def test_bits_hidden_in_zero_width_characters_decode():
+    backend = by_name("bits")
+    assert backend is not None
+    text = "".join("\u200b" if bit == "0" else "\u200c"
+                   for bit in "".join(format(byte, "08b") for byte in PAYLOAD))
+    assert backend.candidates(text.encode("utf-8"))
+
+
+def test_a_repeating_key_is_recovered_from_enough_ciphertext():
+    from pydecomp.plugins.backends.cipher.repeatkey import _each_repeating_key
+    program = ("import os\n\ndef collect(path='/tmp'):\n"
+               "    return [name for name in os.listdir(path) if name]\n\n"
+               "def report(rows):\n    return '\\n'.join(sorted(rows))\n\n"
+               "print(report(collect()))\n") * 4
+    inner = base64.b64encode(zlib.compress(program.encode()))
+    key = b"\x13\x99\x2b\xf0\x7a\x51"
+    blob = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(inner))
+    assert inner in list(_each_repeating_key(blob))
+
+
+def test_a_repeating_key_is_not_guessed_from_too_little_data():
+    from pydecomp.plugins.backends.cipher.repeatkey import _each_repeating_key
+    blob = bytes(byte ^ b"\x13\x99"[index % 2] for index, byte in enumerate(os.urandom(64)))
+    assert list(_each_repeating_key(blob)) == []
+
+
+def test_the_clock_ends_an_exploration_too():
+    from pydecomp.plugins.backends.spec import Budget
+    starved = Budget(opens=10_000, seconds=1e-9)
+    result = explore(base64.b64encode(os.urandom(4096)), accept_text, depth=4,
+                     budget=starved)
+    assert result.exhausted is True
+
+
 def test_a_three_step_chain_is_found():
     blob = b"K3y!8z" + rc4(base64.b64encode(zlib.compress(PAYLOAD)), b"K3y!8z")
     result = explore(blob, accept_text, depth=5, budget=Budget(opens=2000))

@@ -134,11 +134,11 @@ def explore_blobs(blobs, budget: Budget | None = None):
             break
         starts += 1
         outcome = explore(blob, _accept, depth=MAX_CHAIN,
-                          budget=budget or Budget(opens=400))
+                          budget=budget or Budget(opens=400, seconds=6.0))
         if outcome.exhausted and not outcome.hits:
             # the search stopped early, so "nothing found" is not a result yet
             outcome = explore(blob, _accept, depth=MAX_CHAIN,
-                              budget=budget or Budget(opens=2000))
+                              budget=budget or Budget(opens=2000, seconds=25.0))
         for hit in outcome.hits:
             digest = hashlib.sha256(hit.data).digest()
             if digest in seen:
