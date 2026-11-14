@@ -65,7 +65,13 @@ def disassemble(code: CodeObj, version: tuple):
             continue
         text = ""
         if opname in ("LOAD_CONST", "RETURN_CONST"):
-            text = repr(consts[arg]) if arg < len(consts) else f"<const {arg}>"
+            if arg >= len(consts):
+                text = f"<const {arg}>"
+            elif isinstance(consts[arg], CodeObj):
+                nested = consts[arg]
+                text = f"<code object {nested.qualname or nested.name}>"
+            else:
+                text = repr(consts[arg])
         elif opname in name_pool_ops:
             idx = arg >> 1 if opname in ("LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_ATTR",
                                          "STORE_ATTR", "LOAD_SUPER_ATTR") else arg

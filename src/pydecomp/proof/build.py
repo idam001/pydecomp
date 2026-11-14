@@ -62,17 +62,21 @@ def build(text: str, *, name: str, digest: str, size: int, kind: str,
     if identity:
         proof.add_layer("none - input is the source", "engine.dig",
                         detail="byte-identical to the input")
-        proof.mark("<module>", "semantic", "byte-identical to the input source")
+        proof.mark("<module>", "perfect", "input source is unchanged")
+        proof.tier_0_units = ["<module>"]
+        proof.perfect_match = "input source unchanged; rebuilt instruction stream is identical"
     else:
         proof.add_layer("lift to source",
                         backend or "pydecomp.lift",
-                        verified=graded["tier"] == "semantic",
+                        verified=graded["tier"] in ("perfect", "semantic"),
                         target=(f"CPython {version[0]}.{version[1]}" if version else None),
                         detail=graded["detail"])
         for unit, (tier, detail) in graded["units"].items():
             proof.mark(unit, tier, detail)
-    tier_now = "semantic" if identity else graded["tier"]
-    if tier_now != "semantic":
+        proof.tier_0_units = list(graded.get("tier_0_units", []))
+        proof.perfect_match = graded.get("perfect_match", proof.perfect_match)
+    tier_now = "perfect" if identity else graded["tier"]
+    if tier_now not in ("perfect", "semantic"):
         proof.infer("whole module",
                     "statement and expression boundaries were rebuilt from the "
                     "instruction stream", 0.85 if tier_now == "structural" else 0.6)
@@ -84,7 +88,7 @@ def build(text: str, *, name: str, digest: str, size: int, kind: str,
             proof.infer("guarded branches", note, 0.95)
     proof.lose("comments - the bytecode does not carry them")
     proof.lose("source formatting, blank lines and quote style")
-    if tier_now != "semantic":
+    if tier_now not in ("perfect", "semantic"):
         proof.lose("exact statement boundaries where the lifter had to choose")
     if kind == "strings":
         proof.lose("the program itself - only printable strings survived")
@@ -101,4 +105,4 @@ def build(text: str, *, name: str, digest: str, size: int, kind: str,
 def prefix_for(proof: Proof) -> str:
     """The warning header a non-semantic file must carry (empty when proven)."""
     tier = proof.worst
-    return "" if tier == "semantic" else TIER_PREFIX.get(tier, "")
+    return "" if tier in ("perfect", "semantic") else TIER_PREFIX.get(tier, "")

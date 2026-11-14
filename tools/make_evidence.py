@@ -125,10 +125,10 @@ def cases(folder: str) -> list[dict]:
     case = pyarmor_case.build(os.path.join(folder, "pyarmor"))
     built.append({
         "name": "proof-pyarmor",
-        "caption": "pydecomp: PyArmor 9 static unpack, proven semantic",
+        "caption": "pydecomp: synthetic PyArmor-shaped fixture, static recovery + proof",
         "args": [os.path.join(folder, "pyarmor", "worker.py"), "-o",
                  os.path.join(folder, "pyarmor-out"), "--no-color", "--no-anim"],
-        "claims": ["static unpack", "proof", "tier semantic", "pyarmor_runtime"],
+        "claims": ["static unpack", "proof", "pyarmor_runtime"],
         "folder": folder,
         "note": case["marker"],
     })
@@ -191,6 +191,9 @@ def main() -> int:
                 else:
                     # the SVG keeps spacing with non-breaking spaces
                     previous = open(path, encoding="utf-8").read().replace("\u00a0", " ")
+                    if html.escape(case["caption"]) not in previous:
+                        failures += 1
+                        print(f"FAIL  {case['name']}: image caption is stale")
                     for claim in case["claims"]:
                         if claim.lower() not in previous.lower():
                             failures += 1

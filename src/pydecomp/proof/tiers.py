@@ -1,17 +1,7 @@
 """pydecomp - tiers.
 
-Three questions, asked in order, each stronger than the last:
-
-1. **semantic** - recompile the recovered text and diff *every* instruction and
-   operand against the original code object.  This is the standard PyLingual
-   calls a perfect decompilation, and it is the only tier that is written
-   without a warning header.
-2. **structural** - the instruction streams differ (layout, encoding or a
-   different interpreter version) but the control-flow shape and the constant
-   table match.  Equivalent program, different bytes.
-3. **syntactic** - it compiles.  Nothing about equivalence is claimed.
-
-Anything that does not compile is ``unverified`` and says so in the file.
+Proof grades distinguish exact instruction rendering, instruction semantics,
+control-flow shape and compilation.
 
 The comparison never imports or executes the sample: the original is a
 ``CodeObj`` parsed from bytes, and the rebuilt side comes from ``compile()`` of
@@ -26,10 +16,12 @@ from itertools import zip_longest
 from ..bytecode.codeobj import CodeObj, codeobj_from_host
 from ..bytecode.disassembler import disassemble
 from ..bytecode.magic import host_version
-from ..bytecode.roundtrip import _paired_functions, _stream_pairs
+from ..bytecode.roundtrip import (_instruction_records, _paired_functions,
+                                           _stream_pairs)
 
 #: lower is stronger.  Used to decide whether a cleaning pass may be kept.
-TIER_RANK = {"semantic": 0, "structural": 1, "syntactic": 2, "unverified": 3}
+TIER_RANK = {"perfect": 0, "semantic": 1, "structural": 2,
+             "syntactic": 3, "unverified": 4}
 
 #: opcodes whose presence is a layout detail, not a behaviour difference
 _NOISE = {"RESUME", "CACHE", "NOP", "EXTENDED_ARG", "NOT_TAKEN", "EXTENDED_OP",
@@ -94,51 +86,79 @@ def _walk(code: CodeObj, out: list) -> list:
     return out
 
 
+
+def _perfect_stream(code: CodeObj, version: tuple) -> list:
+    return _instruction_records(code, version)
+
+
+def _paired_all(original: CodeObj, rebuilt: CodeObj) -> list | None:
+    left = _walk(original, [])
+    right = _walk(rebuilt, [])
+    buckets: dict[str, list] = {}
+    for node in right:
+        key = getattr(node, "qualname", None) or node.name
+        buckets.setdefault(key, []).append(node)
+    pairs = []
+    for node in left:
+        key = getattr(node, "qualname", None) or node.name
+        bucket = buckets.get(key)
+        if not bucket:
+            return None
+        pairs.append((key, node, bucket.pop(0)))
+    if any(bucket for bucket in buckets.values()):
+        return None
+    return pairs
+
 def compare(text: str, code: CodeObj | None = None,
             version: tuple | None = None) -> dict:
-    """Grade one recovered text against the code object it came from.
-
-    Returns ``{"tier", "detail", "units": {name: (tier, detail)}}``.  ``units``
-    holds one entry per code object, so a module whose functions all match but
-    whose module body differs is reported honestly instead of on average.
-    """
     if code is None or version is None:
         recorded, recorded_version = last_module()
         code = code if code is not None else recorded
         version = version if version is not None else (recorded_version or host_version())
     version = tuple(version[:2])
     host = host_version()
-
     ok, why = compiles(text)
     if not ok:
         return {"tier": "unverified", "detail": why,
-                "units": {"<module>": ("unverified", why)}}
+                "units": {"<module>": ("unverified", why)},
+                "tier_0_units": [], "perfect_match": "0/0 instructions identical"}
     if code is None:
         return {"tier": "syntactic", "detail": "no original code object recorded",
-                "units": {"<module>": ("syntactic", "compiles")}}
-
-    rebuilt = codeobj_from_host(compile_safe(text))
-    if rebuilt is None:
+                "units": {"<module>": ("syntactic", "compiles")},
+                "tier_0_units": [], "perfect_match": "0/0 instructions identical"}
+    rebuilt_code = compile_safe(text)
+    if rebuilt_code is None:
         return {"tier": "syntactic", "detail": "recompile produced no code object",
-                "units": {"<module>": ("syntactic", "compiles")}}
-
+                "units": {"<module>": ("syntactic", "compiles")},
+                "tier_0_units": [], "perfect_match": "0/0 instructions identical"}
+    rebuilt = codeobj_from_host(rebuilt_code)
     same_version = version == host
+    pairs = _paired_all(code, rebuilt) if same_version else None
     units: dict[str, tuple] = {}
-    semantic_units = 0
-    if same_version:
-        pairs = list(_paired_functions(code, rebuilt))
-    else:
-        left, right = _walk(code, []), _walk(rebuilt, [])
-        pairs = [(getattr(a, "qualname", None) or a.name, a, b)
-                 for a, b in zip_longest(left, right) if a is not None and b is not None]
+    tier_0_units: list[str] = []
+    matched_instructions = total_instructions = 0
+    if pairs is None:
+        fallback = list(_paired_functions(code, rebuilt))
+        pairs = fallback
+        units["<code-object set>"] = ("syntactic", "code-object names or counts differ")
     for name, original, mine in pairs:
         label = getattr(original, "qualname", None) or name or "<unit>"
         if same_version:
+            left_exact = _perfect_stream(original, version)
+            right_exact = _perfect_stream(mine, host)
+            limit = max(len(left_exact), len(right_exact))
+            same = left_exact == right_exact
+            total_instructions += limit
+            matched_instructions += (len(left_exact) if same else
+                                     sum(a == b for a, b in zip(left_exact, right_exact)))
+            if same:
+                units[label] = ("perfect", f"{len(left_exact)}/{len(left_exact)} instructions")
+                tier_0_units.append(label)
+                continue
             left = _stream_pairs(original, version)
             right = _stream_pairs(mine, host)
             if left == right:
-                units[label] = ("semantic", f"{len(left)}/{len(left)} instructions")
-                semantic_units += 1
+                units[label] = ("semantic", f"{len(left)}/{len(left)} non-branch instructions")
                 continue
         left_shape = _shape(original, version)
         right_shape = _shape(mine, host)
@@ -151,13 +171,20 @@ def compare(text: str, code: CodeObj | None = None,
                         f"{drift} opcode(s) differ" if drift else "constant table differs")
     if not units:
         return {"tier": "syntactic", "detail": "nothing to compare",
-                "units": {"<module>": ("syntactic", "compiles")}}
+                "units": {"<module>": ("syntactic", "compiles")},
+                "tier_0_units": [], "perfect_match": "0/0 instructions identical"}
     for name, (tier, detail) in units.items():
-        if tier != "semantic":
-            return {"tier": tier, "detail": f"{name}: {detail}", "units": units}
-    return {"tier": "semantic",
-            "detail": f"{semantic_units}/{len(units)} units instruction-identical",
-            "units": units}
+        if tier not in ("perfect", "semantic"):
+            return {"tier": tier, "detail": f"{name}: {detail}", "units": units,
+                    "tier_0_units": tier_0_units,
+                    "perfect_match": f"{matched_instructions}/{total_instructions} instructions identical"}
+    result_tier = "perfect" if all(tier == "perfect" for tier, _ in units.values()) else "semantic"
+    perfect_match = f"{matched_instructions}/{total_instructions} instructions identical"
+    return {"tier": result_tier,
+            "detail": f"{len(tier_0_units)}/{len(units)} units instruction-identical"
+                      if result_tier == "perfect" else f"all units match outside control-flow operands; {perfect_match}",
+            "units": units, "tier_0_units": tier_0_units,
+            "perfect_match": perfect_match}
 
 
 def compile_safe(text: str):

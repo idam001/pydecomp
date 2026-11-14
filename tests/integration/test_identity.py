@@ -1,8 +1,8 @@
 """Identity gate: rebuild each source, recompile, diff the instruction streams.
 
-A case passes only when every instruction of the reconstruction matches the
-original opcode+operand stream (jumps/layout ops excluded - see
-``pydecomp._stream_pairs``).  Run with ``python3 tests/test_identity.py``.
+A case passes only when every opcode, canonical operand and argument rendering
+matches the original, including branch targets.  Run with
+``python3 tests/test_identity.py``.
 """
 import os
 import py_compile
@@ -40,6 +40,9 @@ CASES = {
  "imports": "import base64, zlib\nfrom json import dumps\n\nX = base64.b64decode('Z2hw').decode()\n",
  "nested_def": "def outer(a):\n    def inner(b):\n        return b + 1\n    return inner(a)\n",
  "raise_": "def r(x):\n    if not x:\n        raise ValueError('no')\n    return x\n",
+ "raise_simple": "def fail():\n    raise ValueError('no')\n",
+ "set_literal": "values = {1, 2, 3}\n",
+ "kwonly_sig": "def only(a, /, b=2, *, c=3):\n    return a + b + c\n",
  "assert_": "def a(x):\n    assert x, 'bad'\n    return x\n",
  "async_": "async def run(x):\n    return x\n",
  "yield_": "def gen(n):\n    for i in range(n):\n        yield i\n",

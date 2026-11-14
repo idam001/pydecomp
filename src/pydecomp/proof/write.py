@@ -45,10 +45,11 @@ def write(proof: Proof, output_path: str) -> dict:
     return written
 
 
-def failure(proof: Proof, require: str = "semantic") -> str | None:
+def failure(proof: Proof, require: str = "semantic", label: str | None = None) -> str | None:
     """``None`` when *proof* meets *require*, else the reason it does not."""
-    order = ("semantic", "structural", "syntactic", "unverified")
+    order = ("perfect", "semantic", "structural", "syntactic", "unverified")
     worst = proof.worst
     if order.index(worst) <= order.index(require):
         return None
-    return f"strict: {worst} output - nothing written"
+    label = label or ("strict" if require == "semantic" else require)
+    return f"{label}: {worst} output - nothing written"

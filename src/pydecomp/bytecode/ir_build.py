@@ -208,8 +208,20 @@ class Builder:
             if fall is not None:
                 self._link(fir, number, fall)
 
-        # walk in block order (the bytecode is already in RPO for compiled code)
+        reachable = set()
+        pending = [fir.entry]
+        while pending:
+            bid = pending.pop()
+            if bid in reachable:
+                continue
+            reachable.add(bid)
+            pending.extend(fir.blocks[bid].successors)
+
+        # Walk reachable normal-flow blocks; exception-table-only cleanup blocks
+        # are not represented as ordinary CFG edges by the bytecode reader.
         for number, rows in enumerate(blocks):
+            if number not in reachable:
+                continue
             block = fir.blocks[number]
             preds = [env_of_block[p] for p in block.predecessors if p in env_of_block]
             if number == 0 or not preds:
@@ -294,6 +306,8 @@ class Builder:
                 # *at this point*, which is what lets a loop header see the value
                 # from the back edge as well as the one from the entry
                 push(fir.value("local", name=text))
+            elif opname == "LOAD_ASSERTION_ERROR":
+                push(fir.value("arg", name="AssertionError"))
             elif opname in ("LOAD_NAME", "LOAD_GLOBAL", "LOAD_FROM_DICT_OR_GLOBALS"):
                 # a global read is never the last stored constant: the name is
                 # looked up again at run time, so the IR keeps the name
@@ -305,10 +319,13 @@ class Builder:
                     value.source = "local"
                     value.name = text
                 env[text] = value
-                block.add(IRInstr("STORE", (value,), None, off))
-                block.instructions[-1].args = (value, text)
-            elif opname == "DELETE_FAST" or opname == "DELETE_NAME":
-                block.add(IRInstr("DELETE", (), None, off))
+                if opname == "STORE_GLOBAL":
+                    block.add(IRInstr("GLOBAL", (text,), None, off))
+                block.add(IRInstr("STORE", (value, text), None, off))
+            elif opname in ("DELETE_FAST", "DELETE_NAME", "DELETE_GLOBAL", "DELETE_DEREF"):
+                if opname == "DELETE_GLOBAL":
+                    block.add(IRInstr("GLOBAL", (text,), None, off))
+                block.add(IRInstr("DELETE", (text, opname), None, off))
                 env.pop(text, None)
             elif opname == "GET_ITER":
                 push(fir.value("expr", expr=("iter", pop())))
@@ -446,8 +463,13 @@ class Builder:
                 if target is not None and isinstance(target.expr, tuple) \
                         and target.expr[0] == "build" and target.expr[1] == kind:
                     stack.pop(-1)
+                    additions = (tuple(fir.value("const", type_hint=_const_hint(value),
+                                                   const=value)
+                                       for value in item.const)
+                                 if opname == "SET_UPDATE" and item.source == "const"
+                                 and isinstance(item.const, frozenset) else (item,))
                     push(fir.value("expr", expr=("build", kind,
-                                                 target.expr[2] + (item,))))
+                                                 target.expr[2] + additions)))
                 else:
                     raise Unsupported(f"{opname} without a literal")
             elif opname == "LIST_EXTEND_HANDLED":
@@ -499,12 +521,38 @@ class Builder:
             elif opname in ("CALL", "CALL_FUNCTION", "CALL_FUNCTION_KW",
                             "CALL_METHOD", "CALL_KW", "CALL_FUNCTION_EX"):
                 count = arg
+                kwnames = ()
+                if opname == "CALL_KW":
+                    names_value = pop()
+                    if names_value.source != "const" or not isinstance(names_value.const, tuple) \
+                            or any(not isinstance(name, str) for name in names_value.const):
+                        raise Unsupported("computed keyword names")
+                    kwnames = names_value.const
                 kwargs = []
                 args: list[SSAValue] = []
                 for _ in range(count):
                     args.append(pop())
                 args.reverse()
                 callable_ = pop()
+                if kwnames:
+                    split = len(args) - len(kwnames)
+                    if split < 0:
+                        raise Unsupported("keyword count exceeds call arguments")
+                    kwargs = list(zip(kwnames, args[split:]))
+                    args = args[:split]
+                # In 3.13+ a decorator application has no explicit argument
+                # count: the function object is the call's implicit stack arg,
+                # with the decorator callable immediately below it.
+                if count == 0 and isinstance(callable_.expr, tuple) \
+                        and callable_.expr[0] == "funcdef" and stack:
+                    args = [callable_]
+                    callable_ = pop()
+                elif count == 0 and stack and stack[-1].source == "arg" \
+                        and stack[-1].name == "AssertionError":
+                    # 3.11+ lowers `assert test, message` to a special exception
+                    # load followed by CALL 0; the message is the implicit arg.
+                    args = [callable_]
+                    callable_ = pop()
                 if stack and stack[-1].source == "arg" and stack[-1].name == "__null__":
                     stack.pop()
                 value = fir.value("call_result",
@@ -529,7 +577,23 @@ class Builder:
                     raise Unsupported("MAKE_FUNCTION with flags")
                 push(fir.value("expr", type_hint="code_object",
                                expr=("funcdef", code_value.const,
-                                     qualname.const if qualname is not None else None)))
+                                     qualname.const if qualname is not None else None,
+                                     None, None, ())))
+            elif opname == "SET_FUNCTION_ATTRIBUTE":
+                function, attribute = pop(), pop()
+                if not (isinstance(function.expr, tuple)
+                        and function.expr[0] == "funcdef"):
+                    raise Unsupported("function attribute on a computed value")
+                _, nested, qualname, defaults, kwdefaults, decorators = function.expr
+                if arg == 1:
+                    defaults = attribute
+                elif arg == 2:
+                    kwdefaults = attribute
+                else:
+                    raise Unsupported(f"function attribute flag {arg}")
+                push(fir.value("expr", type_hint="code_object",
+                               expr=("funcdef", nested, qualname,
+                                     defaults, kwdefaults, decorators)))
             elif opname == "KW_NAMES":
                 continue
             elif opname in ("FORMAT_SIMPLE", "FORMAT_VALUE"):
@@ -572,6 +636,12 @@ class Builder:
             elif opname == "RETURN_VALUE":
                 node = pop()
                 block.add(IRInstr("RETURN", (node,), None, off))
+            elif opname == "RAISE_VARARGS":
+                if arg not in (0, 1, 2):
+                    raise Unsupported(f"raise arity {arg}")
+                cause = pop() if arg == 2 else None
+                exception = pop() if arg else None
+                block.add(IRInstr("RAISE", (exception, cause), None, off))
             elif opname in ("LOAD_FAST_LOAD_FAST", "LOAD_FAST_BORROW_LOAD_FAST_BORROW"):
                 first = arg >> 4
                 second = arg & 15
@@ -616,8 +686,10 @@ class Builder:
                     push(stack[-arg])
                 else:
                     if arg > len(stack):
-                        raise Unsupported("SWAP past the stack")
+                        raise Unsupported(
+                            f"SWAP at {off} needs depth {arg}, stack has {len(stack)} value(s)")
                     stack[-1], stack[-arg] = stack[-arg], stack[-1]
+                    block.add(IRInstr("SWAP", (arg,), None, off))
             elif opname in _BLOCK_REGIONS:
                 block.add(IRInstr("SETUP", (opname,), None, off))
             else:

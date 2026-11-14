@@ -28,32 +28,36 @@ still decompiled, by the other engine.
 
 ## What the SSA engine is asked to prove
 
-The SSA engine's text is accepted on one condition: it recompiles to the same
-instruction stream as the original code object. Anything short of that is
-dropped and the stack engine's answer stands, so the IR can only ever replace a
-correct answer with a proven one.
+For same-version input, the SSA engine's text is accepted only at the `perfect`
+tier: its rebuilt instruction records must match exactly. A weaker result is
+dropped and the stack engine's answer stands. For cross-version input, the
+current pipeline can only compile-check the emitted source; that is not exact
+proof and must remain visibly lower-confidence.
 
 ```console
 $ python3 tools/ir_coverage.py
-SSA engine: 16/47 cases instruction-identical (34.0%)
-stack engine carries the other 31
+SSA engine: 26/50 cases instruction-identical (52.0%)
+stack engine carries the other 24
 ```
 
 That number is a floor, not a ceiling: the builder names the opcodes it models
 and raises `Unsupported` on everything else, and each construct added to
 `ir_build.py` moves a case across without touching a single existing answer. The
-identity gate itself stays at **47/47** — whichever engine carries a case, the
-instruction stream of the result matches the original.
+identity gate currently passes **50/50** cases on the measured CPython 3.13
+corpus — whichever engine carries a case, the instruction stream matches the
+original under the gate's comparator.
 
-The IR is version-neutral by construction: the builder reads opcode *names*, so
-3.8's `CALL_FUNCTION` and 3.15's `CALL` produce the same IR node, and one emitter
-serves every version the front end can read.
+The IR is designed to normalize opcode families, but it is not proof that every
+construct lifts on every target. Unsupported shapes fall back; same-version
+exact identity is checked on the running interpreter. Opcode-table coverage and
+source-reconstruction coverage are tracked separately.
 
 ## The version matrix
 
-Every version the front end reads goes through the same four steps - bytes,
-code object, IR, source - and the opcode table each step uses is that release's
-own numbering, not an approximation of it:
+The reader has versioned opcode tables. A table being present means the
+bytecode can be decoded according to that table; it does **not** mean every
+construct can be rebuilt or earn an exact proof. CI host versions and per-target
+fixture coverage are separate compatibility claims:
 
 ```console
 $ python3 tools/fetch_opcode_tables.py --show
@@ -69,13 +73,14 @@ $ python3 tools/fetch_opcode_tables.py --show
 | 3.11 | `opcode.py`, split forward/backward jumps, `PRECALL` | relative to the instruction | same, plus `CACHE` skipping |
 | 3.12 | `opcode.py`, jumps unified again, `RETURN_CONST` | relative | same |
 | 3.13 | `_opcode_metadata.py`, flags in `COMPARE_OP`'s low bits | relative, measured from the *following* instruction | same |
-| 3.14 – 3.15 | `_opcode_metadata.py`, `LOAD_FAST_BORROW`, `LOAD_SMALL_INT`, `NOT_TAKEN` | relative | same |
+| 3.14 – 3.15 | `_opcode_metadata.py`, `LOAD_FAST_BORROW`, `LOAD_SMALL_INT`, `NOT_TAKEN` | relative | partial; unsupported shapes fall back |
 
-`tests/unit/test_version_matrix.py` assembles real bytecode for each version -
-2-byte instructions, that version's jump encoding, that version's marshal layout
-- puts it in a `.pyc` with that version's magic, and asserts the source comes
-out: `bytes → parse_pyc → CodeObj → IR → AST → source`, eight versions, no other
-interpreter on the machine.
+`tests/unit/test_version_matrix.py` assembles bytecode fixtures for each version -
+2-byte instruction encodings, jump rules, and marshal layouts—and puts them in
+`.pyc` fixtures with that version's magic. This tests parsing and selected lifts;
+it is not a promise of exact reconstruction for every language construct on all
+eight target versions. The host CI matrix is configured for CPython 3.9–3.15; the expensive exact
+same-version identity gates currently run on CPython 3.13.
 
 The stack engine is still there and still selectable for one cycle:
 

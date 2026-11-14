@@ -25,7 +25,7 @@ from pydecomp.bytecode.codeobj import codeobj_from_host      # noqa: E402
 
 #: the number of cases the SSA engine reconstructs identically today.  The gate
 #: fails if a change makes this worse; raising it is the work of each release.
-FLOOR = 16
+FLOOR = 26 if P.host_version()[:2] >= (3, 13) else 16
 
 
 def corpus() -> dict:
@@ -43,8 +43,13 @@ def main() -> int:
             rows.append((label, "n/a", "does not compile on this interpreter"))
             continue
         text, report = lift_module_ir(code, P.host_version())
-        if text is None:
-            rows.append((label, "stack", report.get("detail", "")))
+        if text is None or report.get("tier") != "perfect":
+            # The floor is about instruction identity, not merely source that
+            # compiles or earns a weaker semantic grade.
+            detail = report.get("detail", "")
+            if text is not None:
+                detail = f"tier {report.get('tier', 'unknown')}; {detail}"
+            rows.append((label, "stack", detail))
         else:
             rows.append((label, "ssa-ir", report.get("detail", "")))
     ir = sum(1 for row in rows if row[1] == "ssa-ir")

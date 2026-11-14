@@ -59,6 +59,10 @@ def lift_module_ir(code, version: tuple) -> tuple[str | None, dict]:
     if size > IR_SIZE_LIMIT:
         report["detail"] = f"code object is {size:,} B; stack engine takes it"
         return None, report
+    same_version = tuple(version[:2]) == tuple(tiers.host_version()[:2])
+    if not same_version and getattr(code, "exceptiontable", b""):
+        report["detail"] = "cross-version exception-table flow is not modelled by SSA"
+        return None, report
     try:
         fir = build_ir(code, version)
     except Unsupported as exc:
@@ -85,9 +89,8 @@ def lift_module_ir(code, version: tuple) -> tuple[str | None, dict]:
         return None, report
     grade = tiers.grade(text, code, version)
     report["tier"] = grade
-    same_version = tuple(version[:2]) == tuple(tiers.host_version()[:2])
-    if same_version and grade != "semantic":
-        report["detail"] = "emitted text is not instruction-identical"
+    if same_version and grade != "perfect":
+        report["detail"] = f"emitted text is not instruction-identical (graded {grade})"
         return None, report
     if not same_version and not compiles(text):
         report["detail"] = "emitted text does not compile"

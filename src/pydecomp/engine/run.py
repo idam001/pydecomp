@@ -59,7 +59,7 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
                 diff: bool = False,
                 dry_run: bool = False, neutralize: bool = False,
                 fast: bool = False, pick: int | None = None,
-                strict: bool = False, proof: bool = True,
+                strict: bool = False, perfect: bool = False, proof: bool = True,
                 annotate: bool = False, pyarmor_runtime: str | None = None,
                 pyarmor_key: str | None = None,
                 fetch_iocs: bool = False, html_report: bool = False) -> str | None:
@@ -248,20 +248,24 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         mark = prefix_for(proof_obj)
         if mark and not body.startswith(mark):
             body = mark + body
-    if strict:
-        why = proof_failure(proof_obj)
+    if strict or perfect:
+        required = "perfect" if perfect else "semantic"
+        why = proof_failure(proof_obj, required,
+                            label="perfect" if perfect else "strict")
         if why:
             counts = proof_obj.counts
             emit(paint("✘ " + why, RED, BOLD))
-            emit(paint("  " + f"{counts['semantic']} proven · "
+            proven = counts["perfect"] + counts["semantic"]
+            emit(paint("  " + f"{proven} proven · "
+                             f"{counts['perfect']} perfect · {counts['semantic']} semantic · "
                              f"{counts['structural']} structural · "
                              f"{counts['syntactic']} syntactic · "
                              f"{counts['unverified']} unverified", GREY))
             emit(paint("  this run did not prove the output, so no file was written",
                        GREY))
-            EXIT_CODE = 3
+            EXIT_CODE = 2 if perfect else 3
             return None
-    tier_tint = {"semantic": GREEN, "structural": CYAN}.get(proof_obj.worst, YELLOW)
+    tier_tint = {"perfect": GREEN, "semantic": GREEN, "structural": CYAN}.get(proof_obj.worst, YELLOW)
     emit(paint("proof      " + proof_obj.summary(), tier_tint))
 
     head = render_report(report, trace, name, raw_size, digest)
@@ -373,8 +377,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
         rows.append(("payload", sealed_line, RED))
     if intel:
         rows.append(("intel", summary_intel(intel), CYAN))
-    rows.append(("proof", proof_obj.summary(), GREEN if proof_obj.worst == "semantic"
-                 else CYAN))
+    rows.append(("proof", proof_obj.summary(), GREEN
+                 if proof_obj.worst in ("perfect", "semantic") else CYAN))
     if report["iocs"]:
         rows.append(("indicators", report.get("ioc_summary", "none found"), YELLOW))
     if report["risks"]:

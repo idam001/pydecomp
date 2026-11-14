@@ -48,6 +48,8 @@ def codeobj_from_host(compiled) -> CodeObj:
     code.name = compiled.co_name
     code.qualname = getattr(compiled, "co_qualname", compiled.co_name)
     code.firstlineno = compiled.co_firstlineno
+    code.linetable = getattr(compiled, "co_linetable", b"")
+    code.exceptiontable = getattr(compiled, "co_exceptiontable", b"")
     return code
 
 _last_module_code = None

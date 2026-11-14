@@ -1,22 +1,36 @@
 """pydecomp - roundtrip."""
 from __future__ import annotations
 
+from bisect import bisect_left
+
 from ..bytecode.codeobj import CodeObj, codeobj_from_host
 from ..bytecode.decompiler6 import _operand_key
 from ..bytecode.disassembler import disassemble
 from ..bytecode.magic import host_version
 
+def _instruction_records(code, version):
+    return [(opname, _operand_key(code, opname, arg), text)
+            for _offset, opname, arg, text in disassemble(code, version)]
+
+
 def _stream_pairs(code, version):
-    """(offset, opcode, operand-key) for one code object, jumps excluded."""
+    rows = list(disassemble(code, version))
+    ignored = {"RESUME", "CACHE", "NOP", "EXTENDED_ARG", "NOT_TAKEN", "EXTENDED_OP"}
+    active = [row for row in rows if row[1] not in ignored]
+    offsets = [row[0] for row in active]
     pairs = []
-    for offset, opname, arg, _text in disassemble(code, version):
-        if opname in ("RESUME", "CACHE", "NOP", "EXTENDED_ARG", "NOT_TAKEN",
-                      "EXTENDED_OP"):
-            continue
-        if "JUMP" in opname or opname in ("FOR_ITER", "SEND"):
-            continue                      # layout differs, structure is compared
-        pairs.append((opname, _operand_key(code, opname, arg)))
+    for offset, opname, arg, text in active:
+        if "JUMP" in opname or opname in ("FOR_ITER", "SEND") or opname.startswith("SETUP_"):
+            try:
+                target = int(text.removeprefix("to "))
+            except ValueError:
+                target = -1
+            index = bisect_left(offsets, target)
+            pairs.append((opname, ("branch", index)))
+        else:
+            pairs.append((opname, _operand_key(code, opname, arg)))
     return pairs
+
 
 def exact_match(code: CodeObj, text: str, version: tuple):
     """Recompile ``text`` and diff its instruction stream against ``code``.
@@ -33,8 +47,8 @@ def exact_match(code: CodeObj, text: str, version: tuple):
     host = host_version()
     if version != host:
         return 0, 1, f"original is {version[0]}.{version[1]}, host is {host[0]}.{host[1]}"
-    left = _stream_pairs(code, version)
-    right = _stream_pairs(mine, version)
+    left = _instruction_records(code, version)
+    right = _instruction_records(mine, version)
     matched = 0
     first = None
     for index in range(max(len(left), len(right))):
@@ -75,8 +89,8 @@ def identity_report(text: str, version: tuple, limit: int = 6) -> list:
     lines = []
     total = matched = 0
     for name, orig, mine in _paired_functions(module_code, rebuilt):
-        left = _stream_pairs(orig, version)
-        right = _stream_pairs(mine, version)
+        left = _instruction_records(orig, version)
+        right = _instruction_records(mine, version)
         same = 0
         detail = ""
         for index in range(max(len(left), len(right))):

@@ -51,16 +51,64 @@ class Emitter:
         self.loops = {head: tail for tail, head in fir.back_edges()}
         self.loop_exit: int | None = None
 
-    def function(self, code, name: str) -> ast.FunctionDef:
+    def function(self, code, name: str, defaults=None, kwdefaults=None,
+                 decorators=()) -> ast.FunctionDef:
         """Emit a nested code object as a def statement."""
         from ..bytecode.ir_build import build_ir
 
         nested = build_ir(code, self.fir.version)
         inner = Emitter(nested)
         body = inner.body(nested.entry) or [ast.Pass()]
-        return ast.FunctionDef(name=name, args=_arguments(_arg_names(code)),
-                               body=body, decorator_list=[], returns=None,
-                               type_params=[], lineno=1, col_offset=0)
+        globals_ = sorted({instr.args[0]
+                           for block in nested.blocks.values()
+                           for instr in block.instructions
+                           if instr.op == "GLOBAL"})
+        if globals_:
+            body.insert(0, ast.Global(names=globals_))
+        args = self.function_arguments(code, defaults, kwdefaults)
+        return ast.FunctionDef(name=name, args=args, body=body,
+                               decorator_list=[self.expr(item) for item in decorators],
+                               returns=None, type_params=[],
+                               lineno=1, col_offset=0)
+
+    def lambda_expression(self, code, defaults=None, kwdefaults=None) -> ast.Lambda:
+        """Emit only the expression-shaped lambda subset; refuse statement bodies."""
+        from ..bytecode.ir_build import build_ir
+
+        nested = build_ir(code, self.fir.version)
+        body = Emitter(nested).body(nested.entry)
+        if len(body) != 1 or not isinstance(body[0], ast.Return):
+            raise Unsupported("lambda body is not one return expression")
+        expression = body[0].value or ast.Constant(value=None)
+        return ast.Lambda(args=self.function_arguments(code, defaults, kwdefaults),
+                          body=expression)
+
+    def function_arguments(self, code, defaults=None, kwdefaults=None) -> ast.arguments:
+        """Translate definition-time defaults and code-object parameter metadata."""
+        positional = []
+        if defaults is not None:
+            if defaults.source == "const" and isinstance(defaults.const, tuple):
+                items = defaults.const
+            elif isinstance(defaults.expr, tuple) and defaults.expr[0] == "build" \
+                    and defaults.expr[1] == "tuple":
+                items = defaults.expr[2]
+            else:
+                raise Unsupported("computed positional defaults")
+            if len(items) > getattr(code, "argcount", 0):
+                raise Unsupported("more defaults than positional parameters")
+            positional = [self.expr_item(item) for item in items]
+        keyword = {}
+        if kwdefaults is not None:
+            if not (isinstance(kwdefaults.expr, tuple)
+                    and kwdefaults.expr[0] == "dict"):
+                raise Unsupported("computed keyword-only defaults")
+            for key, value in kwdefaults.expr[1]:
+                if isinstance(key, SSAValue) and key.source == "const":
+                    key = key.const
+                if not isinstance(key, str):
+                    raise Unsupported("non-string keyword-only default")
+                keyword[key] = self.expr_item(value)
+        return _arguments_for_code(code, positional, keyword)
 
     # -- values ------------------------------------------------------------
     def expr(self, value: SSAValue) -> ast.expr:
@@ -76,6 +124,8 @@ class Emitter:
             if isinstance(value.const, tuple):
                 return ast.Tuple(elts=[self.expr_item(item) for item in value.const],
                                  ctx=ast.Load())
+            if isinstance(value.const, frozenset):
+                return ast.Set(elts=[self.expr_item(item) for item in value.const])
             raise Unsupported(f"constant {type(value.const).__name__}")
         if value.source in ("arg", "local", "phi"):
             return ast.Name(id=value.name or f"_v{value.id}", ctx=ast.Load())
@@ -144,7 +194,7 @@ class Emitter:
                 return ast.Set(elts=elements)
             raise Unsupported(f"build {sort}")
         if kind == "funcdef":
-            _, code, qualname = tree
+            _, code, qualname, _defaults, _kwdefaults, _decorators = tree
             return ast.Name(id=qualname or getattr(code, "name", "_fn"),
                             ctx=ast.Load())
         if kind == "iter":
@@ -193,7 +243,8 @@ class Emitter:
             _, callable_, args, kwargs = tree
             return ast.Call(func=self.expr(callable_),
                             args=[self.expr(item) for item in args],
-                            keywords=[])
+                            keywords=[ast.keyword(arg=name, value=self.expr(value))
+                                      for name, value in kwargs])
         raise Unsupported(f"expression {kind}")
 
     def import_statement(self, tree, bound: str) -> ast.stmt:
@@ -231,8 +282,22 @@ class Emitter:
                 return ast.ImportFrom(module=modname, names=[ast.alias(
                     name=attr, asname=None if attr == name else name)], level=0)
             if isinstance(value.expr, tuple) and value.expr[0] == "funcdef":
-                _, nested, qualname = value.expr
-                return self.function(nested, name)
+                _, nested, qualname, defaults, kwdefaults, decorators = value.expr
+                if getattr(nested, "name", "") == "<lambda>":
+                    return ast.Assign(
+                        targets=[ast.Name(id=name, ctx=ast.Store())],
+                        value=self.lambda_expression(nested, defaults, kwdefaults))
+                return self.function(nested, name, defaults, kwdefaults, decorators)
+            if isinstance(value.expr, tuple) and value.expr[0] == "call":
+                _, decorator, args, keywords = value.expr
+                if len(args) == 1 and not keywords:
+                    function = args[0]
+                    if isinstance(function.expr, tuple) and function.expr[0] == "funcdef":
+                        _, nested, qualname, defaults, kwdefaults, decorators = function.expr
+                        if getattr(nested, "name", None) == name:
+                            decorators = (decorator,) + tuple(decorators)
+                            return self.function(nested, name, defaults,
+                                                 kwdefaults, decorators)
             if isinstance(value.expr, tuple) and value.expr[0] == "inplace":
                 _, symbol, left, right = value.expr
                 if not isinstance(left, SSAValue) or left.source not in ("arg", "local", "phi"):
@@ -256,11 +321,22 @@ class Emitter:
             if value.source == "const" and value.const is None:
                 return ast.Return(value=None)
             return ast.Return(value=self.expr(value))
+        if op == "RAISE":
+            exception, cause = instr.args
+            return ast.Raise(exc=None if exception is None else self.expr(exception),
+                             cause=None if cause is None else self.expr(cause))
         if op == "SETUP":
             (name,) = instr.args
             raise Unsupported(f"3.8 block region {name}")
+        if op == "GLOBAL":
+            # Hoisted by function(); at module scope a global declaration has
+            # no runtime effect and does not change the instruction stream.
+            return None
         if op == "DELETE":
-            return None                                  # `del x` is not observable here
+            name, opcode = instr.args
+            if opcode == "DELETE_SUBSCR":
+                raise Unsupported("delete subscript was not normalized")
+            return ast.Delete(targets=[ast.Name(id=name, ctx=ast.Del())])
         if op == "STORE_ATTR":
             owner, value, name = instr.args
             return ast.Assign(
@@ -281,6 +357,79 @@ class Emitter:
         return None
 
     # -- structure ---------------------------------------------------------
+    def _tuple_store_group(self, instructions, index):
+        first = instructions[index]
+        if first.op != "STORE":
+            return None
+        value, _name = first.args
+        tree = getattr(value, "expr", None)
+        if not isinstance(tree, tuple) or len(tree) != 3 or tree[0] != "item":
+            return None
+        source = tree[1]
+        stores = []
+        expected = 0
+        for instr in instructions[index:]:
+            if instr.op != "STORE":
+                break
+            item, name = instr.args
+            item_tree = getattr(item, "expr", None)
+            if (not isinstance(item_tree, tuple) or len(item_tree) != 3
+                    or item_tree[0] != "item" or item_tree[1] is not source
+                    or item_tree[2] != expected or not isinstance(name, str)):
+                break
+            stores.append(ast.Name(id=name, ctx=ast.Store()))
+            expected += 1
+        if len(stores) < 2:
+            return None
+        target = ast.Tuple(elts=stores, ctx=ast.Store())
+        return ast.Assign(targets=[target], value=self.expr(source)), len(stores)
+
+    def statements(self, instructions, skip_store: str | None = None) -> list[ast.stmt]:
+        out = []
+        skipped = False
+        index = 0
+        while index < len(instructions):
+            instr = instructions[index]
+            if (instr.op == "SWAP" and instr.args == (2,)
+                    and index + 2 < len(instructions)
+                    and instructions[index + 1].op == "STORE"
+                    and instructions[index + 2].op == "STORE"):
+                first, second = instructions[index + 1:index + 3]
+                first_value, first_name = first.args
+                second_value, second_name = second.args
+                if isinstance(first_name, str) and isinstance(second_name, str):
+                    targets = ast.Tuple(
+                        elts=[ast.Name(id=first_name, ctx=ast.Store()),
+                              ast.Name(id=second_name, ctx=ast.Store())],
+                        ctx=ast.Store())
+                    values = ast.Tuple(
+                        elts=[self.expr(first_value), self.expr(second_value)],
+                        ctx=ast.Load())
+                    out.append(ast.Assign(targets=[targets], value=values))
+                    index += 3
+                    continue
+            if instr.op in ("BRANCH", "JUMP", "FOR_ITER"):
+                index += 1
+                continue
+            if (skip_store and not skipped and instr.op == "STORE"
+                    and instr.args[1] == skip_store):
+                skipped = True
+                index += 1
+                continue
+            grouped = self._tuple_store_group(instructions, index)
+            if grouped is not None:
+                stmt, consumed = grouped
+                out.append(stmt)
+                index += consumed
+                continue
+            stmt = self.statement(instr)
+            if stmt is not None:
+                out.append(stmt)
+                if isinstance(stmt, (ast.Return, ast.Raise)):
+                    break
+            index += 1
+        return out
+
     def body(self, start: int, stop: set[int] | None = None) -> list[ast.stmt]:
         stop = set(stop or ())
         out: list[ast.stmt] = []
@@ -328,12 +477,8 @@ class Emitter:
                         return out
                     continue
             self.consumed.add(current)
-            for instr in block.instructions:
-                if instr.op in ("BRANCH", "JUMP"):
-                    continue
-                stmt = self.statement(instr)
-                if stmt is not None:
-                    out.append(stmt)
+            for stmt in self.statements(block.instructions):
+                out.append(stmt)
                 if isinstance(stmt, (ast.Return, ast.Raise)):
                     return out
             successors = [s for s in block.successors]
@@ -396,7 +541,7 @@ class Emitter:
             stmt = self.statement(instr)
             if stmt is not None:
                 header_statements.append(stmt)
-        body = self._loop_body(inside, outside, tails)
+        body = self._loop_body(inside, outside, tails, head=inside)
         if body is None:
             return None
         test = self.expr(cond)
@@ -422,6 +567,23 @@ class Emitter:
             seen.add(current)
             self.consumed.add(current)
             block = self.fir.blocks[current]
+            if any(instr.op == "FOR_ITER" for instr in block.instructions):
+                nested = self.for_loop(current, skip_first_store)
+                skip_first_store = None
+                if nested is None:
+                    return None
+                body.extend(nested)
+                current = self.loop_exit
+                self.loop_exit = None
+                continue
+            if current != head and current in self.loops and len(block.successors) == 2:
+                nested = self.while_loop_at_head(current)
+                if nested is None:
+                    return None
+                body.extend(nested)
+                current = self.loop_exit
+                self.loop_exit = None
+                continue
             terminated = False
             skip = skip_first_store
             skip_first_store = None
@@ -508,7 +670,7 @@ class Emitter:
         return header_statements + [
             ast.While(test=test, body=body or [ast.Pass()], orelse=[])]
 
-    def for_loop(self, head: int):
+    def for_loop(self, head: int, skip_header_store: str | None = None):
         """`for name in iterable:` from a block that ends with FOR_ITER."""
         block = self.fir.blocks[head]
         terminator = None
@@ -526,8 +688,12 @@ class Emitter:
         if not tails:
             return None
         header_statements: list[ast.stmt] = []
+        skip = skip_header_store
         for instr in block.instructions:
             if instr.op in ("BRANCH", "JUMP", "FOR_ITER"):
+                continue
+            if skip and instr.op == "STORE" and instr.args[1] == skip:
+                skip = None
                 continue
             stmt = self.statement(instr)
             if stmt is not None:
@@ -555,8 +721,37 @@ class Emitter:
             ast.For(target=target, iter=self.expr(iterable), body=body or [ast.Pass()],
                     orelse=[], type_comment=None)]
 
+    def _assert_message(self, bid: int):
+        block = self.fir.blocks.get(bid)
+        if block is None:
+            return False, None
+        if (len(block.instructions) not in (1, 2)
+                or block.instructions[-1].op != "RAISE"
+                or (len(block.instructions) == 2
+                    and block.instructions[0].op != "CALL")):
+            return False, None
+        raise_instr = block.instructions[-1]
+        if raise_instr.args[1] is not None:
+            return False, None
+        exception = raise_instr.args[0]
+        if len(block.instructions) == 1:
+            if exception.source == "arg" and exception.name == "AssertionError":
+                return True, None
+            return False, None
+        if block.instructions[0].result is not exception:
+            return False, None
+        tree = getattr(exception, "expr", None)
+        if not isinstance(tree, tuple) or not tree or tree[0] != "call":
+            return False, None
+        _kind, callable_, args, keywords = tree
+        if callable_.source != "arg" or callable_.name != "AssertionError" or keywords:
+            return False, None
+        if len(args) > 1:
+            return False, None
+        return True, args[0] if args else None
+
     def branch(self, block, successors, stop) -> list[ast.stmt]:
-        """Emit an if/else from a block with two successors."""
+        """Emit an if/else, or recover a compiler-lowered assert."""
         terminator = None
         for instr in reversed(block.instructions):
             if instr.op == "BRANCH":
@@ -575,6 +770,29 @@ class Emitter:
         # names it, the other arm falls into it
         join = self._join(true_block, false_block)
         test = self.expr(cond)
+        is_assert, message = self._assert_message(false_block)
+        if is_assert:
+            self.consumed.add(false_block)
+            self.consumed.discard(true_block)
+            assertion = ast.Assert(
+                test=test, msg=None if message is None else self.expr(message))
+            return [assertion] + self.body(true_block, stop)
+        if join is None:
+            true_block_obj = self.fir.blocks[true_block]
+            false_block_obj = self.fir.blocks[false_block]
+            true_raises = bool(true_block_obj.instructions
+                               and true_block_obj.instructions[-1].op == "RAISE")
+            false_raises = bool(false_block_obj.instructions
+                                and false_block_obj.instructions[-1].op == "RAISE")
+            if true_raises != false_raises:
+                raise_block = true_block if true_raises else false_block
+                other_block = false_block if true_raises else true_block
+                raise_body = self.body(raise_block, stop)
+                other_body = self.body(other_block, stop)
+                raise_test = (test if true_raises else
+                              ast.UnaryOp(op=ast.Not(), operand=test))
+                guard = ast.If(test=raise_test, body=raise_body or [ast.Pass()], orelse=[])
+                return [guard] + other_body
         if kind == "if_none":
             test = ast.Compare(left=test, ops=[ast.IsNot()],
                                comparators=[ast.Constant(value=None)])
@@ -635,12 +853,53 @@ def _arg_names(code) -> list[str]:
     return names[:count]
 
 
-def _arguments(names: list[str]) -> ast.arguments:
+def _arguments(names: list[str], defaults: list[ast.expr] | None = None) -> ast.arguments:
     return ast.arguments(posonlyargs=[], args=[ast.arg(arg=name, annotation=None,
                                                       type_comment=None)
                                               for name in names],
                          vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None,
-                         defaults=[])
+                         defaults=list(defaults or []))
+
+
+def _arguments_for_code(code, defaults: list[ast.expr],
+                        kwdefaults: dict[str, ast.expr]) -> ast.arguments:
+    """Rebuild all parameter categories from code-object argument metadata."""
+    names = list(getattr(code, "varnames", ()) or ())
+    positional_count = int(getattr(code, "argcount", 0) or 0)
+    positional_only_count = int(getattr(code, "posonlyargcount",
+                                         getattr(code, "posonly", 0)) or 0)
+    keyword_only_count = int(getattr(code, "kwonlyargcount",
+                                     getattr(code, "kwonly", 0)) or 0)
+    positional_names = names[:positional_count]
+    keyword_names = names[positional_count:positional_count + keyword_only_count]
+    if len(positional_names) != positional_count or len(keyword_names) != keyword_only_count:
+        raise Unsupported("incomplete argument names in code object")
+    if len(defaults) > positional_count:
+        raise Unsupported("more defaults than positional parameters")
+    if set(kwdefaults) - set(keyword_names):
+        raise Unsupported("keyword-only default name outside signature")
+    make_arg = lambda name: ast.arg(arg=name, annotation=None, type_comment=None)
+    index = positional_count + keyword_only_count
+    vararg = None
+    kwarg = None
+    flags = int(getattr(code, "flags", 0) or 0)
+    if flags & 0x04:                                  # CO_VARARGS
+        if index >= len(names):
+            raise Unsupported("missing *args name")
+        vararg = make_arg(names[index])
+        index += 1
+    if flags & 0x08:                                  # CO_VARKEYWORDS
+        if index >= len(names):
+            raise Unsupported("missing **kwargs name")
+        kwarg = make_arg(names[index])
+    return ast.arguments(
+        posonlyargs=[make_arg(name) for name in positional_names[:positional_only_count]],
+        args=[make_arg(name) for name in positional_names[positional_only_count:]],
+        vararg=vararg,
+        kwonlyargs=[make_arg(name) for name in keyword_names],
+        kw_defaults=[kwdefaults.get(name) for name in keyword_names],
+        kwarg=kwarg,
+        defaults=list(defaults))
 
 
 def emit_module(fir: FunctionIR, version: tuple = (3, 13)) -> str:

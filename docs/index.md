@@ -54,23 +54,14 @@ Every recovered file opens with one line and nothing else:
    reported. Where a value is not in the bytecode, `_PydecompUnknown` names the
    runnability report says so.
 
-## Numbers
+## Measured checks
 
-Run `python3 tools/run_gates.py` on a checkout — ten gates, all green on
-CPython 3.13/Linux in under ten seconds:
-
-| Gate | Result |
-|---|---|
-| classic packing cases | 20/20 |
-| CLI contract | 26/26 |
-| fallbacks and round trip | all good |
-| menu and prompts | all good |
-| polish passes | 44/44 |
-| instruction-identical round trips | 47/47 |
-| obfuscator probes | 37/37 |
-| native (Cython/ELF) | 41/41 |
-| hardest-obfuscation benchmark | 33/44 semantic · 11/11 rebuilt as source |
-| worked examples | 6/6 recovered |
+On the current CPython 3.13/Linux working tree, the unit suite passed and all
+36/36 gates were green. The identity integration was 50/50 and the recovery
+corpus was 296/296. The SSA engine alone matched exact instruction records for
+26/50 cases; the stack engine handled the remaining 24. These results describe
+that checkout and interpreter, not every supported bytecode target or host OS.
+Run `python3 tools/run_gates.py` to reproduce the gates.
 
 ## Licence
 

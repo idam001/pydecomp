@@ -1,19 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="572" height="185"
-viewBox="0 0 572 185" role="img" aria-label="pydecomp --strict: refuses to write what it cannot prove">
-<rect width="572" height="185" rx="10" fill="#0d1117" stroke="#30363d"/>
-<rect width="572" height="30" rx="10" fill="#161b22"/>
-<rect y="20" width="572" height="10" fill="#161b22"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="692" height="185"
+viewBox="0 0 692 185" role="img" aria-label="pydecomp --strict: refuses to write what it cannot prove">
+<rect width="692" height="185" rx="10" fill="#0d1117" stroke="#30363d"/>
+<rect width="692" height="30" rx="10" fill="#161b22"/>
+<rect y="20" width="692" height="10" fill="#161b22"/>
 <circle cx="18" cy="15" r="5" fill="#f85149"/><circle cx="36" cy="15" r="5" fill="#d29922"/>
 <circle cx="54" cy="15" r="5" fill="#3fb950"/>
-<text x="554" y="19" text-anchor="end" fill="#8b949e"
+<text x="674" y="19" text-anchor="end" fill="#8b949e"
 font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11">python dist/pydecomp.py opaque.bin …</text>
 <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12.5" xml:space="preserve">
 <text x="18" y="60" fill="#8b949e">   ▸ Decompiling opaque.bin</text>
 <text x="18" y="77" fill="#8b949e">   ▸ stage 1   no Python layer recovered → carved printable strings</text>
 <text x="18" y="94" fill="#f85149">   ✘ strict: unverified output - nothing written</text>
-<text x="18" y="111" fill="#c9d1d9">     0 proven · 0 structural · 0 syntactic · 1 unverified</text>
+<text x="18" y="111" fill="#c9d1d9">     0 proven · 0 perfect · 0 semantic · 0 structural · 0 syntactic · 1 unverified</text>
 <text x="18" y="128" fill="#c9d1d9">     this run did not prove the output, so no file was written</text>
 </g>
 <text x="18" y="173" fill="#6e7681" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5">
-captured from dist/pydecomp.py · commit 9303b43 · pydecomp --strict: refuses to write what it cannot prove</text>
+captured from dist/pydecomp.py · commit fc90585 · pydecomp --strict: refuses to write what it cannot prove</text>
 </svg>

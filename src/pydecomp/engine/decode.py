@@ -35,8 +35,8 @@ def deep_decode(blob: bytes, depth: int = 4, limit: int = 64 * 1024 * 1024):
     if cached is not None:
         return cached
     result = _deep_decode_uncached(blob, depth + (_DEEP["layers"] - 4), limit)
-    if len(_DECODE_CACHE) > _DECODE_CACHE_CAP:       # item 29: bounded memo
-        _DECODE_CACHE.clear()
+    if len(_DECODE_CACHE) >= _DECODE_CACHE_CAP:      # item 29: hard bounded memo
+        _DECODE_CACHE.pop(next(iter(_DECODE_CACHE)))
     _DECODE_CACHE[key] = result
     return result
 

@@ -58,7 +58,7 @@ def test_decompile_returns_a_tier():
     data = marshal.dumps(compile(SOURCE, "t.py", "exec"))
     text, name, tier = backends.decompile(data, (3, 13))
     assert text and name == "pydecomp.lift"
-    assert tier in ("semantic", "structural", "syntactic", "unverified")
+    assert tier in ("perfect", "semantic", "structural", "syntactic", "unverified")
     assert backends.LAST["tried"] == ["pydecomp.lift"]
 
 
@@ -152,6 +152,6 @@ def test_a_custom_backend_can_still_win_on_evidence():
         data = marshal.dumps(good)
         text, name, tier = backends.decompile(data, (3, 13))
         assert text and name == "good", (name, tier)
-        assert tier in ("semantic", "structural")
+        assert tier in ("perfect", "semantic", "structural")
     finally:
         backends.candidates, backends.route = original_candidates, original_route

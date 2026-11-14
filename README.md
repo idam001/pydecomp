@@ -1,17 +1,19 @@
 # pydecomp
 
-**Python deobfuscator and decompiler.** Unpacks PyArmor 8/9, PyInstaller,
-Nuitka, cx_Freeze, py2exe, PEX, shiv, briefcase, Cython, marshal, `.pyc`
-1.0–3.15, and Base64/zlib/XOR/emoji chains — statically, on your machine.
+**Static Python deobfuscator and decompiler.** Recovers supported PyInstaller,
+Nuitka, freezer, marshal, `.pyc`, and common encoded-layer formats without
+running the sample. PyArmor-format recovery is key-dependent and experimental:
+the end-to-end fixture is synthetic, so it does not establish compatibility with
+every vendor build. See the per-format limits and test evidence below.
 
-**Every output ships with a machine-checkable proof. pydecomp refuses to write
-source at the tier it proves.**  By [Idam Emmanuel](https://github.com/idam001).
+**Successful output includes machine-checkable proof by default; strict modes
+refuse to write when their proof threshold is missed.** By
+[Idam Emmanuel](https://github.com/idam001).
 
 [![CI](https://github.com/idam001/pydecomp/actions/workflows/ci.yml/badge.svg)](https://github.com/idam001/pydecomp/actions/workflows/ci.yml)
 ![version](https://img.shields.io/badge/version-1.0.0-3fb950)
-![python](https://img.shields.io/badge/python-3.9%20%E2%80%93%203.15-58a6ff)
+![host CI matrix](https://img.shields.io/badge/host%20CI%20matrix-CPython%203.9%E2%80%933.15-58a6ff)
 ![deps](https://img.shields.io/badge/runtime%20dependencies-none-3fb950)
-![gates](https://img.shields.io/badge/gates-27%2F27-3fb950)
 
 ```
 sample_deob.py          the recovered program
@@ -54,24 +56,31 @@ unit, and writes the result next to the output:
 
 | tier | meaning | written as |
 |---|---|---|
-| **semantic** | recompiles to the *same instruction stream* as the original | plain source |
-| **structural** | same control-flow shape and constant table, encoding differs | `--annotate` marks it |
-| **syntactic** | it compiles; equivalence not proven | `--annotate` marks it |
-| **unverified** | it does not compile; kept because dropping it loses code | `--annotate` marks it |
+| **perfect** | same-version instruction records match exactly, including operands and rendered branch targets | plain source |
+| **semantic** | normalized instruction streams match, with layout-dependent jump offsets normalized | plain source; not a formal proof of behavior for arbitrary programs |
+| **structural** | opcode profile and constant table match, but instruction streams differ | `--annotate` marks it |
+| **syntactic** | it compiles; equivalence is not established | `--annotate` marks it |
+| **unverified** | it does not compile; retained only where policy allows, with the failure reported | `--annotate` marks it |
 
-![PyArmor 9 static unpack, proven semantic](docs/assets/proof-pyarmor.svg)
+![Synthetic PyArmor-shaped fixture: static recovery and proof output](docs/assets/proof-pyarmor.svg)
+
+The image below is generated from `tests/fixtures/pyarmor_case.py`; it is a
+format-shaped test fixture, not a vendor-produced PyArmor sample.
 
 ```console
-$ pydecomp worker.py          # a real PyArmor 9 payload, runtime beside it
+$ pydecomp worker.py          # runtime beside the sample, if a key candidate is recoverable
    runtime   ~/case/pyarmor_runtime_000000/pyarmor_runtime.so  (used for the runtime key)
    ▸ stage 5   PyArmor 8+ blob · serial 000000 · CPython 3.13 · AES-CTR across the code objects
    ▸ stage 6   static unpack: 1 code object(s) recovered · key 11223344… verified by marshal structure
    fidelity   output verified: still the recovered program
-   proof      proven 3/3 units (100%) · tier semantic
+   proof      proven 3/3 units (100%) · tier perfect
 ```
 
-`--strict` writes **nothing** unless every unit is instruction-identical, and
-exits `3`. It is the only Python recovery tool that will refuse its own output.
+`--strict` writes **nothing** unless every unit reaches at least the `semantic`
+tier, and exits `3` on refusal. `--perfect` requires every unit to reach the
+stronger `perfect` tier and exits `2` on refusal. Both leave no source or proof
+file when their threshold is not met; neither is a formal proof of arbitrary
+runtime behavior.
 
 ![pydecomp --strict writes only what it proves](docs/assets/strict-refusal.svg)
 
@@ -87,7 +96,7 @@ $ pydecomp --check-proof out/worker_deob.proof.json
      ok   guarantee        no input byte was executed, imported, or compiled
      ok   input sha256     recorded 58c1b15b93f2c34b… / now 58c1b15b93f2c34b…
      ok   output sha256    ~/out/worker_deob.py
-     ok   tiers reproduce  recomputed semantic=3, structural=0, syntactic=0
+     ok   tiers reproduce  recomputed perfect=3, semantic=0, structural=0
    verified: this file is what the proof says it is
 ```
 
@@ -102,12 +111,12 @@ offline — no CDN, no fonts, no scripts.
 
 | | |
 |---|---|
-| **Protectors** | PyArmor 8/9 **static unpack** (header parse → key hunt in `pyarmor_runtime` → AES-CTR → marshal → lift, key accepted only when the plaintext parses), PyArmor 7 static carve (key fragments reported), Hyperion, pyobfuscate.com |
-| **Freezers** | PyInstaller CArchive + PYZ (2.0 and 2.1+ cookies, stripped `.pyc` headers rebuilt), cx_Freeze, py2exe, PEX, shiv, briefcase |
-| **Bytecode** | CPython 3.8–3.15 by table, `.pyc` 1.0–3.15 sniffed, PyPy lifted with the closest table (marked *approximate*) |
-| **Interpreters** | CPython, PyPy, MicroPython `.mpy`, Jython, IronPython, Brython — named by signature, never guessed |
+| **Protectors** | PyArmor-shaped blobs: experimental, key-dependent recovery; the committed end-to-end fixture is synthetic. Missing or unverified keys leave the code opaque. Other named schemes are reported with their tested limits. |
+| **Freezers** | PyInstaller CArchive + PYZ and listed freezer formats; check the fixture matrix for which container versions have end-to-end tests. |
+| **Bytecode** | Opcode tables include CPython 3.8–3.15; table presence means the stream can be decoded, not that every construct is lifted. The CI host matrix is configured for CPython 3.9–3.15; exact per-target reconstruction coverage is narrower and versioned. |
+| **Interpreter recognition** | CPython, PyPy, MicroPython `.mpy`, Jython, IronPython, Brython signatures can be identified; recognition does not imply source decompilation support |
 | **Obfuscators** | 21 named schemes with their contract (marker or shape), then the generic peeler |
-| **Backends** | the bundled lifter, plus `pycdc-rs`, `pycdc`, `depyo`, `uncompyle6`, `decompyle3` when installed — chosen by proof tier, not by order |
+| **Backends** | the bundled SSA and stack lifters; no third-party decompiler backend is currently wired into selection |
 | **Agents** | MCP server (`pydecomp --mcp`): `identify`, `peel`, `triage`, `decompile_pyc`, `deobfuscate` |
 | **Plugins** | `pip install`able decoders via the `pydecomp.decoders` entry point |
 
@@ -146,15 +155,15 @@ with `PYDECOMP_AUTHOR` / `PYDECOMP_SIGNATURE`.
 
 ---
 
-## Named packers it reconstructs
+## Selected format support and limits
 
-| Container | What pydecomp does, statically |
+| Input | What pydecomp does, statically |
 | --- | --- |
-| base64 / zlib / bz2 / lzma / hex / base85 / z85 / base58 / base45 / base91 / uu chains | peels 64 layers, 12 chains |
-| marshal / `.pyc` (`3.9 → 3.14`) | own marshal reader + lifter |
-| PyInstaller (CArchive + PYZ) | cookie → TOC → entries → PYZ → modules |
-| Cython `.so` / ELF payloads | tier-S exact / structural |
-| PyArmor 8–9 | bootstrap + build banner + carved payload strings, with an honest "the code objects stay encrypted" |
+| base64 / zlib / bz2 / lzma / hex / base85 / z85 / base58 / base45 / base91 / uu chains | bounded layer peeling; see configured depth and size limits |
+| marshal / `.pyc` | versioned readers and opcode tables; source lifting is partial and unsupported constructs fall back |
+| PyInstaller (CArchive + PYZ) | parses supported cookies and entries; coverage depends on container version |
+| Cython `.so` / ELF payloads | extracts supported metadata and embedded payloads; native machine code is not decompiled to equivalent Python |
+| PyArmor-shaped 8/9 format | key-dependent decryption path; current end-to-end test uses a synthetic fixture and does not establish compatibility with vendor-produced builds |
 | Hyperion | recovers the `__code__` program |
 | pyobfuscate.com (paid tier) | base85 → PBKDF2-SHA256 ×1e6 → AES-GCM, decrypted offline |
 | string tables + rotation | rotation replayed, accessors resolved, decoders folded |
@@ -181,7 +190,7 @@ container and on a phone: one directory tree, or one file.
 | **Static only** | The sample is data. No `exec`, no `eval`, no subprocess, no import. |
 | **Layered** | 25 nesting layers, 32 MiB per layer, cycle-safe. |
 | **Both engines** | Text/expression engine for source-level obfuscation, bytecode engine for `marshal`/`pyc`/`compile()` payloads. |
-| **Version-aware** | Own `marshal` reader and opcode tables for CPython 3.9 → 3.14, without needing that interpreter installed. |
+| **Version-aware** | Versioned `marshal` readers and opcode tables; bytecode parsing does not imply complete source lifting or exact reconstruction for every target version. |
 | **Runs anywhere** | Pure standard library, single file if you want it, Termux included. |
 | **Honest output** | Every recovery is compiled, audited for unbound names, and reported — a file that would not run is caught before it is written. |
 
@@ -203,7 +212,6 @@ You lose a little tidiness, never the recovered script.
 
 ```console
 $ pip install pydecomp-tool      # the command is still `pydecomp`
-$ pip install "pydecomp-tool[backends]"   # + pycdc-rs / depyo if you have them
 ```
 
 **Q: is this the `pydecomp` on PyPI?** No — that is an unrelated project. This
@@ -289,65 +297,38 @@ The engine is a pipeline, and every stage reports what it did:
 
 ## Measured results
 
-Run on this checkout (`python3 tools/run_gates.py`), CPython 3.13, Linux x86-64 —
-33 gates, plus 409 unit tests:
+Measured on the current working tree with CPython 3.13, Linux x86-64. The full
+suite passed, but this is not a claim that every host OS or bytecode target has
+been tested:
 
-| Gate | Result |
+| Check | Result |
 |---|---|
-| `test_v4` — classic packing cases | 20/20 |
-| `test_v5` — CLI, output layout, static-only | 26/26 |
-| `test_v6` — policy chatter, fallbacks, round trip | all good |
-| `test_v7` — menu and prompts | all good |
-| `test_v8` — polish, folding, demangling | 44/44 |
-| `differential` — every polish pass returns what the original returns | 26 fixtures × 11 passes, 0 divergences |
-| `fuzz` — mutated bytes into the marshal/`.pyc`/freezer readers | 18,000 blobs, 0 crashes, 0 hangs |
-| `test_identity` — instruction-identical round trips | 47/47 |
-| `test_probes` — obfuscator shapes | 37/37 |
-| `test_native` — Cython/ELF recovery | all good |
-| `test_proof` — proof schema, `--strict` exit codes | all good |
-| `test_pyarmor` — PyArmor 8/9 static unpack, CLI | all good |
-| `test_freezers` — six freezers + PyInstaller PYZ | all good |
-| `test_agents` — MCP handshake/tools, plugins, cross-impl | all good |
-| `obf_bench` — hardest-obfuscation suite | 32/44 semantic · 11/11 rebuilt as source |
-| `bench_core` — peel/decompile/AES budgets | 3/3 budgets met |
-| `examples` — the six worked examples | 6/6 recovered |
-| `corpus` — 50 families × 4 payloads | 200/200 recovered |
-| `learn` — trained decoder ranking | 39% → 78% top-1, 7.50 → 1.83 decodes |
-| `stress` — 200 random stacks, up to 24 layers, 18 codecs, 13 loader shapes | 200/200 recovered (floor 196) |
+| Unit suite | passed |
+| Full gate suite | 36/36 passed |
+| Identity integration | 50/50 instruction-identical |
+| Corpus | 296/296 cases recovered |
+| SSA exact-identity coverage | 26/50 cases; the stack backend carries the other 24 |
+| Backend matrix | 49 forged cases, 0 failures, 7 carried |
+| Stress | 200/200 generated stacks recovered (floor 196) |
 
-Real samples (byte-for-byte stable across releases):
-
-| Sample | Input | Output | Time |
-|---|---|---|---|
-| `All-nasa-hacker.py` | 2,499 B | 5,386 B | 0.03 s |
-| `Kamrul.py` | 647,813 B | 42,246 B | 0.47 s |
-| `Old.py` | 1,136,184 B | 723,362 B | 3.55 s |
+Run `python3 tools/run_gates.py` to reproduce the gates and
+`python3 tools/ir_coverage.py` to inspect SSA versus fallback coverage. Results
+must be refreshed when the corpus, fixtures, or gate definitions change.
 
 ## The corpus is the data centre
 
-No claim in this README rests on a screenshot of one lucky file.  `corpus/` holds
-**50 families × 4 real payload programs = 200 cases**, generated by
-`tools/make_corpus.py`, each with a `truth.json` that names the payload by digest:
+No claim in this README rests on one lucky file. `corpus/` currently contains
+**74 generated families × 4 cases = 296 cases**, each with a `truth.json` that
+identifies its expected payload by digest. These are reproducible fixtures, not
+74 independently sourced real-world malware samples.
 
-```
-a_b64  b_b64_twice  c_zlib_b64  d_b64_zlib  e_lzma_b64  f_gzip_b64  g_bz2_b64
-h_b32_b64  i_b85  j_a85  k_b64url  l_hex  m_escaped  n_xor_b64  o_reverse_b64
-p_rot13_b64  q_mix_three  r_mix_four  s_chr_array  t_zip_member  u_marshal_b64
-v_pyc_b64  w_bare_marshal  x_marshal_zlib  y_pyc_zlib_b64  z_refuse
-aa_base58  ab_base62  ac_base45  ad_z85  ae_uu  af_hex_upper  ag_double_zip
-ah_eval_chain  ai_stacked_mixed  aj_string_table  ak_inline_import
-al_lambda_indirect  am_lambda_reverse  an_nested_exec  ao_zero_width
-ap_exec_compile  aq_b85_zlib_marshal  ar_deep_twelve  as_string_array  at_chr_arith
-```
-
-`tools/eval_corpus.py` runs the analyser over every case and grades the file it
-wrote against the payload: it has to compile **and** keep ≥90% of the payload's
-behaviour-bearing tokens (names, string *values*, numbers).  Latest run, this
-checkout:
+`tools/eval_corpus.py` grades every recovered file: it must compile and retain at
+least 90% of the payload's behavior-bearing tokens. Latest measured run on this
+working tree:
 
 | | cases | recovered | mean token recall | time |
 |---|---|---|---|---|
-| all families | 200 | **200** | 98.0% | 3.86 s |
+| all families | 296 | **296** | 98.6% | 9.88 s |
 
 The per-family table is [docs/corpus-results.md](docs/corpus-results.md). Beyond the
 named families, `tools/stress_corpus.py` builds **random stacks nobody wrote

@@ -1,8 +1,8 @@
-"""Gate: PyArmor 8/9 static unpack, end to end, through the CLI.
+"""Gate: the synthetic PyArmor-shaped fixture's static recovery path.
 
-The case is a real APK-style layout: the loader beside a
-``pyarmor_runtime_000000/`` directory.  The tool must find the runtime by
-itself, derive the key, decrypt the payload, lift it, and prove the result.
+The fixture places a generated loader beside a generated runtime stand-in. It
+checks key discovery/supply, decryption, lifting, and proof behavior for that
+known layout; it is not a vendor-produced PyArmor compatibility test.
 """
 import os
 import subprocess
@@ -97,7 +97,8 @@ ok(case["marker"] not in wrong_body, "a wrong key produces no payload")
 import json  # noqa: E402
 if recovered:
     proof = json.load(open(os.path.join(out, recovered[0][:-3] + ".proof.json")))
-    ok(proof["tiers"]["semantic"], f"the unpacked payload is proven: {proof['tiers']}")
+    ok(proof["tiers"]["perfect"] or proof["tiers"]["semantic"],
+       f"the unpacked payload is proven: {proof['tiers']}")
     ok(any("marshal" in str(layer.get("backend", "")) for layer in proof["layers"]),
        "the proof records the marshal layer")
 

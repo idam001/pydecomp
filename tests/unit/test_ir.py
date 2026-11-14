@@ -36,6 +36,18 @@ SOURCES = {
     "import": "import zlib\nfrom json import dumps\n",
     "fstring": "def s(n):\n    return f'{n!r:>4}'\n",
     "nested_def": "def outer(a):\n    def inner(b):\n        return b + 1\n    return inner(a)\n",
+    "default": "_K = 90\ndef sign(payload, key=_K):\n    return payload + key\n",
+    "delete": "def discard(x):\n    del x\n    return None\n",
+    "global_augmented": "count = 0\ndef bump():\n    global count\n    count += 1\n",
+    "raise": "def fail():\n    raise ValueError('no')\n",
+    "assert": "def checked(value):\n    assert value, 'value is required'\n",
+    "assert_no_message": "def checked(value):\n    assert value\n    return value\n",
+    "set_literal": "values = {1, 2, 3}\n",
+    "kwonly_signature": "def only(a, /, b=2, *, c=3):\n    return a + b + c\n",
+    "keyword_call": "def use(fn):\n    return fn(1, c=2)\n",
+    "decorated_function": "def decorate(fn):\n    return fn\n@decorate\ndef target():\n    return 1\n",
+    "lambda_default": "fn = lambda a, b=2: a * b\n",
+    "nested_loops": "def f(n):\n    t = 0\n    for i in range(n):\n        for j in range(i):\n            t += j\n    return t\n",
 }
 
 
@@ -43,14 +55,25 @@ def code_for(source: str):
     return codeobj_from_host(compile(source, "<ir-test>", "exec"))
 
 
+_PY313_FUNCTION_ATTR_CASES = {"default", "kwonly_signature",
+                              "decorated_function", "lambda_default"}
+
+
+def require_host_bytecode(label: str) -> None:
+    """These samples exercise CPython 3.13's SET_FUNCTION_ATTRIBUTE protocol."""
+    if label in _PY313_FUNCTION_ATTR_CASES and tiers.host_version()[:2] < (3, 13):
+        pytest.skip("SSA support for this function-attribute bytecode is 3.13+ only")
+
+
 @pytest.mark.parametrize("label", sorted(SOURCES))
 def test_construct_is_instruction_identical(label):
     """Every construct the emitter claims to model recompiles identically."""
+    require_host_bytecode(label)
     text, report = ir_pipeline.lift_module_ir(code_for(SOURCES[label]),
                                               tiers.host_version())
     assert text is not None, report["detail"]
-    assert tiers.grade(text, code_for(SOURCES[label]), tiers.host_version()) == "semantic"
-    assert report["tier"] == "semantic"
+    assert tiers.grade(text, code_for(SOURCES[label]), tiers.host_version()) == "perfect"
+    assert report["tier"] == "perfect"
 
 
 def test_emitted_text_compiles_and_has_no_stray_return():
@@ -63,6 +86,7 @@ def test_emitted_text_compiles_and_has_no_stray_return():
 
 @pytest.mark.parametrize("label", sorted(SOURCES))
 def test_values_are_defined_once(label):
+    require_host_bytecode(label)
     fir = build_ir(code_for(SOURCES[label]), tiers.host_version())
     assert len(set(fir.values)) == len(fir.values)
     for value in fir.values.values():
@@ -117,6 +141,26 @@ def test_emitter_output_that_differs_is_thrown_away(monkeypatch):
     assert "instruction-identical" in report["detail"]
 
 
+def test_semantic_grade_is_not_enough_for_same_version_ssa(monkeypatch):
+    """The SSA fast path may win only on exact instruction identity."""
+    monkeypatch.setattr(tiers, "grade", lambda text, code, version: "semantic")
+    text, report = ir_pipeline.lift_module_ir(code_for(SOURCES["assign"]),
+                                              tiers.host_version())
+    assert text is None
+    assert "instruction-identical" in report["detail"]
+
+
+def test_cross_version_ssa_refuses_unmodelled_exception_tables():
+    source = "def f(value):\n    try:\n        return int(value)\n    except ValueError:\n        return 0\n"
+    module = code_for(source)
+    code = next(value for value in module.consts if isinstance(value, type(module)))
+    assert code.exceptiontable
+    host = tiers.host_version()
+    text, report = ir_pipeline.lift_module_ir(code, (host[0], host[1] + 1))
+    assert text is None
+    assert "exception-table flow" in report["detail"]
+
+
 def test_size_limit_hands_large_code_to_the_stack_engine(monkeypatch):
     monkeypatch.setattr(ir_pipeline, "IR_SIZE_LIMIT", 1)
     text, report = ir_pipeline.lift_module_ir(code_for(SOURCES["assign"]),
@@ -158,11 +202,13 @@ def test_pipeline_reports_which_engine_ran():
 
 
 def test_unmodelled_opcode_raises_unsupported():
-    """An opcode outside the IR is named, and the exception type is the contract."""
-    source = "def t(x):\n    try:\n        return 1\n    except:\n        return 0\n"
+    """A reachable opcode outside the IR triggers explicit fallback."""
+    source = "def t(left, right):\n    return {**left, **right}\n"
+    module = code_for(source)
+    function = next(value for value in module.consts
+                    if isinstance(value, type(module)))
     with pytest.raises(Unsupported):
-        emit_module(build_ir(code_for(source), tiers.host_version()),
-                    tiers.host_version())
+        build_ir(function, tiers.host_version())
 
 
 def test_the_ir_never_executes_the_sample():

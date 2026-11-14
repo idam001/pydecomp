@@ -15,22 +15,22 @@ font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monos
 <text x="18" y="128" fill="#8b949e">   ▸ stage 4   code object &lt;&lt;module&gt;&gt; 3.13 · 18 B bytecode</text>
 <text x="18" y="145" fill="#8b949e">   ▸ stage 5   no further text layer → rebuilt whole module as source</text>
 <text x="18" y="162" fill="#c9d1d9">   fidelity   output verified: still the recovered program</text>
-<text x="18" y="179" fill="#3fb950">   proof      proven 0/1 units (0%) · tier syntactic</text>
+<text x="18" y="179" fill="#3fb950">   proof      proven 0/2 units (0%) · tier syntactic</text>
 <text x="18" y="196" fill="#8b949e">   ▸ writing output   frozen_deob.py</text>
-<text x="18" y="213" fill="#8b949e">   ▸ verifying   sha256 cb4234be2f3b5f47…</text>
+<text x="18" y="213" fill="#8b949e">   ▸ verifying   sha256 985f557d691cbfe0…</text>
 <text x="18" y="230" fill="#c9d1d9"></text>
 <text x="18" y="247" fill="#8b949e">   ╭─ DONE ────────────────────────────────────────────────────────────────────────────────────╮</text>
 <text x="18" y="264" fill="#8b949e">   │ source    frozen.bin   1,027 bytes                                                        │</text>
 <text x="18" y="281" fill="#8b949e">   │ result    python source   5 stages                                                        │</text>
 <text x="18" y="298" fill="#8b949e">   │ fingerprint unknown / hand-rolled                                                         │</text>
-<text x="18" y="315" fill="#8b949e">   │ output    frozen_deob.py   145 bytes                                                      │</text>
-<text x="18" y="332" fill="#8b949e">   │ proof     proven 0/1 units (0%) · tier syntactic                                          │</text>
+<text x="18" y="315" fill="#8b949e">   │ output    frozen_deob.py   144 bytes                                                      │</text>
+<text x="18" y="332" fill="#8b949e">   │ proof     proven 0/2 units (0%) · tier syntactic                                          │</text>
 <text x="18" y="349" fill="#8b949e">   │ behaviour persistence                                                                     │</text>
 <text x="18" y="366" fill="#8b949e">   │ saved to  ~/frozen-out/frozen_deob.py                                                     │</text>
-<text x="18" y="383" fill="#8b949e">   │ elapsed   0.04s                                                                           │</text>
+<text x="18" y="383" fill="#8b949e">   │ elapsed   0.08s                                                                           │</text>
 <text x="18" y="400" fill="#8b949e">   ╰───────────────────────────────────────────────────────────────────────────────────────────╯</text>
 <text x="18" y="417" fill="#8b949e">   + frozen_deob.proof.json, frozen_deob.proof.md</text>
 </g>
 <text x="18" y="462" fill="#6e7681" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5">
-captured from dist/pydecomp.py · commit 9303b43 · pydecomp: PyInstaller CArchive → PYZ → source</text>
+captured from dist/pydecomp.py · commit fc90585 · pydecomp: PyInstaller CArchive → PYZ → source</text>
 </svg>

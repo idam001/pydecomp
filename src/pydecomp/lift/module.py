@@ -586,7 +586,8 @@ def with_provenance(text: str) -> str:
 #: also how the stack engine stays testable as the fallback it now is
 ENGINE_SWITCH = {"ssa": True}
 
-_RANK = {"semantic": 0, "structural": 1, "syntactic": 2, "unverified": 3}
+_RANK = {"perfect": 0, "semantic": 1, "structural": 2,
+          "syntactic": 3, "unverified": 4}
 
 
 def lift_module(code: CodeObj, version: tuple) -> str:
@@ -599,7 +600,7 @@ def lift_module(code: CodeObj, version: tuple) -> str:
         return _lift_with_stack(code, version, legacy=True)
     ir_text, ir_report = lift_module_ir(code, version)
     LIFT_QUALITY["ir"] = ir_report
-    if ir_text is not None and ir_report.get("tier") == "semantic":
+    if ir_text is not None and ir_report.get("tier") in ("perfect", "semantic"):
         # the SSA emitter produced text that recompiles to the same instructions
         LIFT_QUALITY["proven"] = True
         LIFT_QUALITY["engine"] = "ssa-ir"
@@ -616,7 +617,7 @@ def lift_module(code: CodeObj, version: tuple) -> str:
             ir_grade = stack_grade = "unverified"
         if _RANK.get(ir_grade, 3) < _RANK.get(stack_grade, 3):
             LIFT_QUALITY["engine"] = "ssa-ir"
-            LIFT_QUALITY["proven"] = ir_grade == "semantic"
+            LIFT_QUALITY["proven"] = ir_grade in ("perfect", "semantic")
             LIFT_QUALITY["ir"]["detail"] += f" (beats the stack engine's {stack_grade})"
             return with_provenance(ir_text)
         LIFT_QUALITY["engine"] = "stack"

@@ -61,7 +61,7 @@ ok(any(layer.get("transform") for layer in payload.get("layers", [])),
 
 # the recovered program is instruction-identical, and the proof says so
 tiers = payload.get("tiers", {})
-ok(tiers.get("semantic"), f"units proven at tier 1: {tiers}")
+ok(tiers.get("perfect") or tiers.get("semantic"), f"units proven: {tiers}")
 ok(not tiers.get("unverified"), "nothing was written that does not compile")
 
 sheet = open(os.path.join(out, written[0][:-3] + ".proof.md"), encoding="utf-8").read()

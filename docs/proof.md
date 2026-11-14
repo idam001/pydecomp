@@ -1,28 +1,33 @@
 # Proof-carrying output
 
-Every recovery writes three files:
+When proof output is enabled, a successful recovery writes the source and
+machine-readable/readable proof companions:
 
 ```
-sample_deob.py          the program
-sample_deob.proof.json  the evidence, machine-checkable
-sample_deob.proof.md    the same evidence, readable
+sample_deob.py          the recovered program
+sample_deob.proof.json  machine-checkable evidence
+sample_deob.proof.md    readable evidence
 ```
 
-The point is that a reader does not have to trust pydecomp. They can re-run the
-comparison, or write their own against the same schema.
+`--no-proof` disables the companions; a strict/perfect refusal writes neither
+source nor proof. A reader can independently re-run the comparison or implement
+a checker against the schema.
 
-## The three tiers
+## Proof tiers
 
 | tier | how it is earned | written as |
 |---|---|---|
-| `semantic` | recompile the recovered text, re-disassemble it, and diff **every** instruction and operand against the original code object | plain source |
-| `structural` | the instruction streams differ, but the opcode profile and the constant table match | plain source; `--annotate` adds a header |
-| `syntactic` | it compiles | plain source; `--annotate` adds a header |
-| `unverified` | it does not compile | kept, because dropping it loses code; `--annotate` adds a header |
+| `perfect` | on the same interpreter version, every instruction record, canonical operand, and rendered argument matches | plain source |
+| `semantic` | normalized instruction streams match after branch destinations are expressed as instruction indices rather than byte offsets | plain source; this is a comparator result, not a formal proof of all runtime behavior |
+| `structural` | instruction streams differ, but opcode profile and constant table match | plain source; `--annotate` adds a header |
+| `syntactic` | it compiles, but stronger equivalence checks did not pass | plain source; `--annotate` adds a header |
+| `unverified` | it does not compile | retained only where policy allows; the failure is reported |
 
-A module is reported at the **weakest** tier any of its units needed, and the
-per-unit verdicts are in the JSON (`tiers.semantic`, `tiers.structural`, …) so
-"97% proven" is never a rounding exercise.
+A module is reported at the **weakest** tier any of its units needed. The JSON
+contains per-unit verdicts and exact-match evidence (`tiers.perfect`,
+`tiers.semantic`, `tier_0_units`, and `perfect_match`), so a rounded percentage
+cannot hide a weaker function. Cross-version samples cannot earn same-version
+instruction tiers merely by compiling.
 
 ### What counts as an instruction
 
@@ -46,8 +51,10 @@ equal — that was a real hole, closed in this release and pinned by a test.
      "backend": "bytecode.marshal_reader", "target": "CPython 3.13"},
     {"depth": 3, "transform": "lift to source", "backend": "pydecomp.lift"}
   ],
-  "tiers": {"semantic": ["<module>", "collect", "ship"],
+  "tiers": {"perfect": ["<module>", "collect", "ship"], "semantic": [],
             "structural": [], "syntactic": [], "unverified": []},
+  "tier_0_units": ["<module>", "collect", "ship"],
+  "perfect_match": "all compared instructions identical",
   "inferred": [{"region": "cleaned identifiers", "reason": "renamed 3 names",
                 "confidence": 0.9}],
   "lost": ["comments - the bytecode does not carry them"],
@@ -59,16 +66,27 @@ equal — that was a real hole, closed in this release and pinned by a test.
 which scans every module in the package for `exec`, `eval`, `__import__` of a
 sample, and `compile()` of anything but text this tool wrote.
 
-## `--strict`
+## `--strict` and `--perfect`
+
+`--strict` requires every unit to reach at least `semantic` (a `perfect` unit
+also satisfies that threshold). `--perfect` requires every unit to be exactly
+`perfect`. Either option refuses without writing source or proof when its
+threshold is missed.
 
 ```console
 $ pydecomp sample.py --strict ; echo $?
-✘ strict: syntactic output (0 proven, 0 structural, 1 syntactic, 0 unverified) - nothing written
+✘ strict: syntactic output - nothing written
 3
+
+$ pydecomp sample.py --perfect ; echo $?
+✘ perfect: semantic output - nothing written
+2
 ```
 
-Nothing is written, not even the proof. Exit `3` distinguishes "refused to make
-a claim" from "failed" (`1`) and "succeeded" (`0`), so a pipeline can gate on it.
+Exit `3` means the strict threshold was not met; exit `2` means the stronger
+perfect threshold was not met. Exit `1` is an execution/input failure and `0`
+is success. These grades are static comparison evidence, not a guarantee that
+arbitrary recovered code is safe to run.
 
 ## `--annotate`
 

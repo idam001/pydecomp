@@ -1,10 +1,11 @@
 # What pydecomp recovers
 
-pydecomp reads what a file carries and writes it back as Python. Function
-bodies, constants, control flow, class structure, identifiers, string tables and
-decoded payloads are all reconstructed; comments and original whitespace are
-regenerated to match Python's idioms, so the recovered source functions
-identically. Every output states the tier it was proven at.
+pydecomp statically analyzes source, bytecode, containers, and encoded layers.
+It reconstructs the subset supported by the selected parser and lifter; comments
+and original whitespace are generally absent, and protected or native payloads
+may remain opaque. Output includes the tier actually earned. A recognized
+format or extracted string table is not the same as recovered source, and a
+compile check is not a proof of runtime equivalence.
 
 ## The path each input takes
 
@@ -13,48 +14,44 @@ identically. Every output states the tier it was proven at.
 | base64 / base32 / base85 / a85 / hex / z85 / base45 / base58 / base62 / uu / rot13 / reverse / escapes | decoded through the full chain, layer by layer, with the chain reported |
 | zlib / gzip / bz2 / lzma, nested and mixed with text codecs | decompressed and decoded to the innermost source |
 | `exec`/`eval`/`compile` loaders, lambda decoders, alias chains, `getattr`-hidden sinks | statically evaluated: the argument is computed, never run |
-| marshal, `.pyc` (1.0 – 3.15), zip bundles, string tables, `types.CodeType` reconstruction | lifted to source by the in-house decompiler |
-| XOR with constant keys, run-time key enumeration, version-gated decoys | key space inferred and enumerated; a candidate is kept only when its payload parses or unmarshals to a code object |
-| MBA, opaque predicates, control-flow flattening, dead code | folded and removed where the transformation is proven, kept where it is not |
-| PyArmor 8/9 static unpack, PyInstaller/Nuitka/pex containers, carved blobs inside native images | headers parsed, keys hunted in the runtime, AES-CTR payloads decrypted, carved payloads digested |
-| Nuitka binaries | constants tables, string tables, module file names and any embedded code object, read by this project's own parsers |
+| marshal, `.pyc` headers, zip bundles, string tables, `types.CodeType` reconstruction | parsed with version-specific tables; source lifting coverage depends on opcode/construct support |
+| XOR and other candidate keys | bounded candidates may be tried; keep a result only when format-specific validation succeeds, and report the validation strength |
+| MBA, opaque predicates, control-flow flattening, dead code | simplified only by implemented passes; each rewrite is subject to the project's checks and limits |
+| PyArmor-shaped blobs | experimental, key-dependent path; current end-to-end fixture is synthetic and is not evidence of universal vendor compatibility |
+| PyInstaller/freezer containers and native images | extract recognized members or metadata; embedded Python bytecode may be lifted, while native machine code is not generally converted back to Python source |
+| Nuitka binaries | best-effort constants, strings, module names, and embedded code-object extraction; this is not a full decompilation of Nuitka machine code |
 
-## Key derivation
+## Key derivation and encrypted payloads
 
-A loader that derives its key at run time is the interesting case, and it is
-covered at the level the file exposes it:
+Static key analysis is limited to bounded, explicit candidate sources and
+whitelisted expressions. A candidate is not accepted merely because it looks
+plausible; the format-specific parser must validate its output. A parseable
+marshal stream is structural evidence, not cryptographic authentication.
 
-- **Key space inferred and enumerated.** `len(os.urandom(16))` is 16 and a byte
-  key is one of 256; `eval/keyhunt.py` infers that space, enumerates it, and
-  accepts a candidate only when the payload it produces parses as Python or
-  marshals into a code object. Measured: correct key in 0.1 s, garbage candidates
-  rejected rather than reported.
-- **Key handed over by the machine.** When the licence server passes the key to a
-  native routine, the Python layer holds ciphertext and the carve stage reports
-  everything else the binary contains, together with the call site that receives
-  the key. That is the recovery path for a protected image.
-- **Key derived from a wide uniform space.** pydecomp reports the exact
-  expression that derives the key and the candidate space it spans, then
-  enumerates the reachable part: byte keys, short keys, and time-window keys.
+If a key is supplied at runtime by a license service, is absent from the
+provided files, or is protected by an unsupported native routine, pydecomp
+cannot infer it from ciphertext alone. It reports the missing input and preserves
+recoverable metadata rather than inventing source. Any timing or key-recovery
+claim must name the fixture and candidate-space limits used to measure it.
 
 ## Compiled and custom targets
 
-- **Nuitka, Cython, mypyc.** The native front end parses the image with its own
-  ELF/PE reader, recovers the constants tables, the string table and the module
-  file names, and lifts any embedded code object with the same decompiler every
-  other input uses.
-- **A packer with its own VM.** The interpreter is recovered by the normal
-  pipeline; translating its program back to Python is the next pass, and the
-  recovered VM is written out in full so the dispatch table is in hand.
+- **Nuitka and Cython.** The native front end can inspect supported ELF/PE
+  structures, extract strings/constants and recover embedded Python bytecode
+  when present. Compiled machine code itself is not lifted back into equivalent
+  Python; results must say whether they are source, embedded bytecode, or
+  metadata-only.
+- **A packer with its own VM.** Static inspection may expose a dispatcher or
+  payload, but translating an undocumented VM back to Python is a separate
+  feature and is not assumed to succeed automatically.
 
-## Coverage, enforced not claimed
+## Coverage, measured not universal
 
-Every claim on this page is a gate. The corpus is 50 families × 4 payloads and
-the random-stack run drives 200 unseen stacks up to 24 layers deep through 13
-loader shapes; a case that stops being recovered fails the build. The
-adversarial gate drives a real packer's output and checks that a sealed payload
-is labelled sealed, that a plain file is never called recovered, and that
-cleaning never deletes live code.
+The generated recovery corpus currently has 74 families × 4 cases (296 total);
+the latest recorded run recovered 296/296 at the corpus's token-retention
+threshold. A separate gate drives 200 generated stacks up to 24 layers through
+13 loader shapes. These are useful regression suites, not proof of coverage for
+every real-world protector, Python release, or native build.
 
 ## The rule that outranks everything above
 

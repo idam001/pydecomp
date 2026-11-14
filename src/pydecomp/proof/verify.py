@@ -115,16 +115,23 @@ def verify(proof_path: str) -> dict:
         identity = any(str(layer.get("transform", "")).startswith("none")
                        for layer in payload.get("layers") or [])
         if identity:
-            recomputed = {"semantic": ["<module>"], "structural": [],
-                          "syntactic": [], "unverified": []}
+            recomputed = {"perfect": ["<module>"], "semantic": [],
+                          "structural": [], "syntactic": [], "unverified": []}
+            tier_0_units = ["<module>"]
+            perfect_match = "input source unchanged; rebuilt instruction stream is identical"
         else:
             graded = compare(text or artifact.text, None, None)
-            recomputed = {key: [] for key in ("semantic", "structural", "syntactic",
-                                              "unverified")}
+            recomputed = {key: [] for key in ("perfect", "semantic", "structural",
+                                              "syntactic", "unverified")}
             for unit, (tier, _detail) in graded["units"].items():
                 recomputed.setdefault(tier, []).append(unit)
+            tier_0_units = list(graded.get("tier_0_units", []))
+            perfect_match = graded.get("perfect_match", "0/0 instructions identical")
         result["tiers"] = recomputed
-        agrees = (sorted(recomputed.get("semantic", [])) == sorted(claimed.get("semantic", []))
+        result["tier_0_units"] = tier_0_units
+        result["perfect_match"] = perfect_match
+        agrees = (sorted(recomputed.get("perfect", [])) == sorted(claimed.get("perfect", []))
+                  and sorted(recomputed.get("semantic", [])) == sorted(claimed.get("semantic", []))
                   and sorted(recomputed.get("unverified", []))
                   == sorted(claimed.get("unverified", []))
                   and sorted(recomputed.get("structural", []))
@@ -134,6 +141,13 @@ def verify(proof_path: str) -> dict:
         check("tiers reproduce", agrees,
               "recomputed " + ", ".join(f"{key}={len(value)}"
                                         for key, value in recomputed.items()))
+        if "tier_0_units" in payload:
+            check("perfect units", sorted(tier_0_units)
+                  == sorted(payload.get("tier_0_units") or []),
+                  f"recomputed {len(tier_0_units)} exact units")
+        if "perfect_match" in payload:
+            check("perfect match", perfect_match == payload["perfect_match"],
+                  perfect_match)
     except Exception as exc:                         # noqa: BLE001 - never crash a check
         check("tiers reproduce", False, f"{type(exc).__name__}: {exc}")
 

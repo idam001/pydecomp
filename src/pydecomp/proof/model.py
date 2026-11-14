@@ -9,7 +9,8 @@ The schema is deliberately boring so anything can consume it::
     {"tool": "pydecomp 1.0.0",
      "input": {"name": ..., "sha256": ..., "bytes": N},
      "layers": [{"depth": 1, "transform": "base64", "backend": ..., "verified": true}],
-     "tiers": {"semantic": [...], "structural": [], "syntactic": [], "unverified": []},
+     "tiers": {"perfect": [], "semantic": [], "structural": [],
+                "syntactic": [], "unverified": []},
      "inferred": [{"region": ..., "reason": ..., "confidence": 0.91}],
      "lost": [...],
      "guarantee": "no input byte was executed, imported, or compiled"}
@@ -19,10 +20,11 @@ Nothing in here talks to the filesystem; :mod:`pydecomp.proof.write` does that.
 from __future__ import annotations
 
 #: strongest first.  A module is reported at the *weakest* tier it needs.
-TIER_ORDER = ("semantic", "structural", "syntactic", "unverified")
+TIER_ORDER = ("perfect", "semantic", "structural", "syntactic", "unverified")
 
 TIER_MEANING = {
-    "semantic": "recompiles to the same instruction stream as the original",
+    "perfect": "every instruction opcode, operand and rendered argument matches",
+    "semantic": "same operations, operands and normalized branch destinations",
     "structural": "same control-flow shape and constant table, encoding differs",
     "syntactic": "compiles, equivalence not proven",
     "unverified": "does not compile - kept because dropping it loses code",
@@ -86,6 +88,8 @@ class Proof:
         self.output: dict = {}
         self.layers: list[Layer] = []
         self.tiers: dict[str, list[str]] = {key: [] for key in TIER_ORDER}
+        self.tier_0_units: list[str] = []
+        self.perfect_match = "0/0 instructions identical"
         self.evidence: dict[str, str] = {}
         self.inferred: list[dict] = []
         self.lost: list[str] = []
@@ -136,17 +140,19 @@ class Proof:
     @property
     def proven(self) -> bool:
         """True when everything recovered is instruction-identical."""
-        return bool(self.tiers["semantic"]) and not any(
-            self.tiers[key] for key in TIER_ORDER[1:])
+        return bool(self.tiers["perfect"] or self.tiers["semantic"]) and not any(
+            self.tiers[key] for key in TIER_ORDER[2:])
 
     @property
     def percent(self) -> float:
         total = sum(len(self.tiers[key]) for key in TIER_ORDER)
-        return 100.0 * len(self.tiers["semantic"]) / total if total else 0.0
+        proven = len(self.tiers["perfect"]) + len(self.tiers["semantic"])
+        return 100.0 * proven / total if total else 0.0
 
     def summary(self) -> str:
         counts = self.counts
-        return (f"proven {counts['semantic']}/{sum(counts.values())} units "
+        proven = counts["perfect"] + counts["semantic"]
+        return (f"proven {proven}/{sum(counts.values())} units "
                 f"({self.percent:.0f}%) · tier {self.worst}")
 
     # ---------------------------------------------------------------- output
@@ -157,6 +163,8 @@ class Proof:
             "kind": self.kind,
             "layers": [layer.as_dict() for layer in self.layers],
             "tiers": {key: list(value) for key, value in self.tiers.items()},
+            "tier_0_units": list(self.tier_0_units),
+            "perfect_match": self.perfect_match,
             "tier_meaning": dict(TIER_MEANING),
             "inferred": list(self.inferred),
             "lost": list(self.lost),
@@ -193,15 +201,21 @@ class Proof:
         else:
             out.append("- (input needed no unpacking)")
         out.append("")
+        if self.tiers["perfect"]:
+            out.append("## perfect instruction match")
+            out.append("")
+            out.append(self.perfect_match)
+            out.append(", ".join(f"`{name}`" for name in self.tiers["perfect"][:40]))
+            out.append("")
         if self.tiers["semantic"]:
-            out.append("## instruction-identical")
+            out.append("## semantic instruction match")
             out.append("")
             out.append(", ".join(f"`{name}`" for name in self.tiers["semantic"][:40]))
             out.append("")
-        others = self.tiers["structural"] + self.tiers["syntactic"] \
-            + self.tiers["unverified"]
+        others = self.tiers["semantic"] + self.tiers["structural"] \
+            + self.tiers["syntactic"] + self.tiers["unverified"]
         if others:
-            out.append("## not instruction-identical")
+            out.append("## below perfect")
             out.append("")
             for key in TIER_ORDER[1:]:
                 for name in self.tiers[key]:

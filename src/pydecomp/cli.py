@@ -135,8 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pyarmor-key", default=None, metavar="HEX",
                     help="runtime AES key, if you already have it")
     ap.add_argument("--strict", action="store_true",
-                    help="write nothing unless every recovered unit is "
-                         "instruction-identical to the original (exits 3)")
+                    help="write nothing unless every recovered unit is proven (exits 3)")
+    ap.add_argument("--perfect", action="store_true",
+                    help="write nothing unless every instruction and argument matches (exits 2)")
     ap.add_argument("--no-proof", action="store_true",
                     help="do not write the .proof.json / .proof.md companions")
     ap.add_argument("--annotate", action="store_true",
@@ -204,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
                                        diff=args.diff,
                                        verify=args.verify, dry_run=args.dry_run,
                                        neutralize=args.neutralize, fast=args.fast,
-                                       pick=args.pick, strict=args.strict,
+                                       pick=args.pick, strict=args.strict, perfect=args.perfect,
                                        proof=not args.no_proof,
                                        annotate=args.annotate,
                                        pyarmor_runtime=args.pyarmor_runtime,
@@ -222,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
                            diff=args.diff,
                            verify=args.verify, dry_run=args.dry_run,
                            neutralize=args.neutralize, fast=args.fast,
-                           pick=args.pick, strict=args.strict,
+                           pick=args.pick, strict=args.strict, perfect=args.perfect,
                            proof=not args.no_proof, annotate=args.annotate,
                            pyarmor_runtime=args.pyarmor_runtime,
                            pyarmor_key=args.pyarmor_key,

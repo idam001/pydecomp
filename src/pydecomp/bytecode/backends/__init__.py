@@ -27,7 +27,8 @@ VERSION_RANGES = tuple((low, high) for low, high, _names in ROUTES)
 LAST: dict = {"version": None, "backend": None, "tier": None, "tried": [],
               "reason": ""}
 
-_ORDER = {"semantic": 0, "structural": 1, "syntactic": 2, "unverified": 3}
+_ORDER = {"perfect": 0, "semantic": 1, "structural": 2,
+          "syntactic": 3, "unverified": 4}
 
 
 def route(version: tuple) -> list[str]:

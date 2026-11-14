@@ -80,7 +80,7 @@ That single number decides which strategy wins:
 
 | Score | Strategy |
 |---|---|
-| 100% | structural rebuild is instruction-identical — this is what the `identity` gate asserts for 47 shapes |
+| 100% | rebuilt instruction records are identical — the current `identity` gate asserts this for 50 corpus shapes |
 | ≥ 50% | structural rebuild is used, with a note in the preamble |
 | < 50% | statement-by-statement lift is used; frames become `# comments` |
 

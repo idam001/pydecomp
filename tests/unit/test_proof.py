@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from pydecomp.bytecode.codeobj import codeobj_from_host  # noqa: E402
 from pydecomp.proof import build, failure, grade, write  # noqa: E402
-from pydecomp.proof.tiers import TIER_RANK, compare  # noqa: E402
+from pydecomp.proof.tiers import TIER_RANK, compare, host_version  # noqa: E402
 
 PROGRAM = """\
 def add(a, b):
@@ -29,9 +29,12 @@ def _code(text: str):
     return codeobj_from_host(compile(text, "<t>", "exec"))
 
 
-def test_self_comparison_is_semantic():
+def test_self_comparison_is_perfect():
     text = PROGRAM
-    assert compare(text, _code(text))["tier"] == "semantic"
+    result = compare(text, _code(text))
+    assert result["tier"] == "perfect"
+    assert result["tier_0_units"]
+    assert result["perfect_match"].split("/")[0] == result["perfect_match"].split("/")[1].split()[0]
 
 
 def test_renamed_local_is_structural():
@@ -47,13 +50,42 @@ def test_changed_constant_is_not_semantic():
     assert compare(changed, _code(PROGRAM))["tier"] != "semantic"
 
 
+
+def test_jump_target_drift_is_semantic_not_perfect():
+    import copy
+    from pydecomp.bytecode.disassembler import disassemble
+
+    source = "def f(x):\n    if x:\n        return 1\n    return 2\n"
+    original = _code(source)
+    nested = next(item for item in original.consts if hasattr(item, "code"))
+    changed_nested = copy.copy(nested)
+    changed_nested.code = bytearray(nested.code)
+    jumps = [offset for offset, op, _arg, _text in disassemble(nested, host_version())
+             if "JUMP" in op or op in ("FOR_ITER", "SEND")]
+    assert jumps
+    changed_nested.code[jumps[0] + 1] ^= 1
+    changed = copy.copy(original)
+    changed.consts = tuple(changed_nested if item is nested else item
+                           for item in original.consts)
+    result = compare(source, changed)
+    assert result["tier"] in ("semantic", "structural")
+    assert result["tier"] != "perfect"
+    assert result["perfect_match"] != "0/0 instructions identical"
+
+
+def test_perfect_requirement_rejects_semantic_only_output():
+    proof = build(PROGRAM.replace("return a + b", "return a * b"),
+                  name="t.py", digest="d" * 64, size=10, kind="source", trace=[])
+    assert proof.worst != "perfect"
+    assert failure(proof, "perfect") is not None
+
 def test_syntax_error_is_unverified():
     assert grade("def broken(:\n") == "unverified"
 
 
 def test_order_is_semantic_structural_syntactic_unverified():
-    assert TIER_RANK["semantic"] < TIER_RANK["structural"] < TIER_RANK["syntactic"] \
-        < TIER_RANK["unverified"]
+    assert TIER_RANK["perfect"] < TIER_RANK["semantic"] < TIER_RANK["structural"] \
+        < TIER_RANK["syntactic"] < TIER_RANK["unverified"]
 
 
 def test_proof_schema():
@@ -63,7 +95,8 @@ def test_proof_schema():
     for key in ("tool", "input", "layers", "tiers", "inferred", "lost", "guarantee"):
         assert key in payload, key
     assert payload["input"]["sha256"] == "b" * 64
-    assert set(payload["tiers"]) == {"semantic", "structural", "syntactic", "unverified"}
+    assert set(payload["tiers"]) == {"perfect", "semantic", "structural", "syntactic", "unverified"}
+    assert "tier_0_units" in payload and "perfect_match" in payload
     assert "no input byte was executed" in payload["guarantee"]
     assert json.loads(json.dumps(payload))["tool"].startswith("pydecomp ")
     assert payload["layers"][0]["transform"] == "base64"
@@ -72,7 +105,7 @@ def test_proof_schema():
 def test_identity_marks_semantic():
     proof = build(PROGRAM, name="t.py", digest="c" * 64, size=10, kind="source",
                   trace=[], identity=True)
-    assert proof.worst == "semantic"
+    assert proof.worst == "perfect"
     assert proof.proven
     assert "byte-identical" in proof.markdown()
 
@@ -89,6 +122,7 @@ def test_strict_passes_for_proven_output():
     proof = build(PROGRAM, name="t.py", digest="e" * 64, size=10, kind="source",
                   trace=[], identity=True)
     assert failure(proof, "semantic") is None
+    assert failure(proof, "perfect") is None
 
 
 def test_markdown_lists_lost_and_inferred():
@@ -126,3 +160,36 @@ if __name__ == "__main__":
             print(f"FAIL {name}: {exc}")
     print("all good" if not failures else f"{failures} failed")
     sys.exit(1 if failures else 0)
+
+
+def test_perfect_flag_reaches_the_single_file_engine(monkeypatch):
+    from pydecomp import cli
+
+    calls = {}
+    monkeypatch.setattr(cli, "deobfuscate",
+                        lambda *args, **kwargs: calls.update(kwargs) or "written.py")
+    monkeypatch.setattr(cli, "USE_COLOR", False)
+    monkeypatch.setattr(cli, "INTERACTIVE", False)
+    assert cli.main(["input.py", "--perfect", "--no-color", "--no-anim"]) == 0
+    assert calls["perfect"] is True
+
+
+def test_perfect_refusal_sets_exit_two_and_writes_nothing(tmp_path, monkeypatch):
+    from pydecomp import proof as proof_module
+    from pydecomp.engine import run
+    from pydecomp.proof.model import Proof
+
+    sample = tmp_path / "sample.py"
+    sample.write_text("value = 1\n", encoding="utf-8")
+
+    def structural(text, **kwargs):
+        result = Proof("pydecomp test", "sample.py", "a" * 64, len(text))
+        result.mark("<module>", "structural", "fixture")
+        return result
+
+    monkeypatch.setattr(proof_module, "build", structural)
+    output = tmp_path / "out"
+    assert run.deobfuscate(str(sample), str(output), clean=False, reports=False,
+                           perfect=True, proof=False) is None
+    assert run.EXIT_CODE == 2
+    assert not output.exists()

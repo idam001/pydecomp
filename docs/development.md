@@ -22,7 +22,7 @@ python3 tools/run_gates.py             # all of them, one table, ~110 s
 python3 tools/run_gates.py v8 probes   # a subset
 python3 tools/run_gates.py --list
 python3 tools/run_gates.py --json g.json
-python3 -m pytest tests/unit -q        # 90 fast API tests
+python3 -m pytest tests/unit -q        # full unit suite
 ```
 
 | Gate | What it protects |
@@ -32,7 +32,7 @@ python3 -m pytest tests/unit -q        # 90 fast API tests
 | `v6` | fallbacks and round trip |
 | `v7` | menu, prompts, non-interactive behaviour |
 | `v8` | polish passes: demangling, folding, dead branches |
-| `identity` | instruction-identical rebuilds for 47 shapes |
+| `identity` | instruction-identical rebuilds for 50 corpus shapes (CPython 3.13 gate run) |
 | `probes` | 37 known obfuscator shapes |
 | `native` | Cython/ELF tiers and payload carving |
 | `differential` | every polish pass, checked by running the code it rewrote |
