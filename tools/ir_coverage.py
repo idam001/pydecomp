@@ -25,7 +25,7 @@ from pydecomp.bytecode.codeobj import codeobj_from_host      # noqa: E402
 
 #: the number of cases the SSA engine reconstructs identically today.  The gate
 #: fails if a change makes this worse; raising it is the work of each release.
-FLOOR = 26 if P.host_version()[:2] >= (3, 13) else 16
+FLOOR = 30 if P.host_version()[:2] >= (3, 13) else 16
 
 
 def corpus() -> dict:

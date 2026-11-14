@@ -361,6 +361,30 @@ def test_a_314_function_lifts_through_the_same_ir():
     assert "return 1" in text and "return 0" in text
 
 
+def test_314_load_common_constant_uses_the_314_table():
+    assembler = Assembler((3, 14))
+    assembler.op("LOAD_COMMON_CONSTANT", 4).op("STORE_NAME", 0)
+    code = assembler.code(names=("value",), varnames=(), argcount=0)
+    text = emit_module(build_ir(code, (3, 14)), (3, 14))
+    assert "value = any" in text
+
+
+def test_315_load_common_constant_appends_none():
+    assembler = Assembler((3, 15))
+    assembler.op("LOAD_COMMON_CONSTANT", 5).op("STORE_NAME", 0)
+    code = assembler.code(names=("value",), varnames=(), argcount=0)
+    text = emit_module(build_ir(code, (3, 15)), (3, 15))
+    assert "value = None" in text
+
+
+def test_load_common_constant_refuses_out_of_range_indices():
+    assembler = Assembler((3, 14))
+    assembler.op("LOAD_COMMON_CONSTANT", 5).op("STORE_NAME", 0)
+    code = assembler.code(names=("value",), varnames=(), argcount=0)
+    with pytest.raises(Unsupported, match="LOAD_COMMON_CONSTANT index 5"):
+        build_ir(code, (3, 14))
+
+
 # -- the whole pipeline, from bytes -----------------------------------------
 
 class MarshalWriter:

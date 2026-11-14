@@ -369,6 +369,20 @@ class Builder:
             elif opname == "LOAD_SMALL_INT":
                 # 3.14 pushes small integers without a constant-table entry
                 push(fir.value("const", type_hint="int", const=arg))
+            elif opname == "LOAD_COMMON_CONSTANT":
+                # 3.14's compact table is shared by the native lifter.  3.15
+                # appends None; keep the table versioned so a 3.14 operand is
+                # never silently reinterpreted as a 3.15 constant.
+                common = ("AssertionError", "NotImplementedError", "tuple", "all", "any")
+                if tuple(self.version[:2]) >= (3, 15):
+                    common += (None,)
+                if not 0 <= arg < len(common):
+                    raise Unsupported(f"LOAD_COMMON_CONSTANT index {arg}")
+                item = common[arg]
+                if item is None:
+                    push(fir.value("const", type_hint="none", const=None))
+                else:
+                    push(fir.value("arg", name=item))
             elif opname in _LEGACY_BINOPS:
                 symbol = _LEGACY_BINOPS[opname]
                 right, left = pop(), pop()
