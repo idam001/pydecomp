@@ -221,15 +221,28 @@ def _folded_source(source: str) -> str | None:
         return None
 
 
-def find_payloads(source: str) -> list[Payload]:
-    """Statically evaluate every exec/eval/compile() argument. Nothing runs."""
+def find_payloads(source: str, context: dict | None = None) -> list[Payload]:
+    """Statically evaluate every exec/eval/compile() argument. Nothing runs.
+
+    ``context`` carries only static helper definitions across nested ``exec``
+    layers. Real loaders inherit their module globals when they exec a decoded
+    payload; evaluating each layer as an unrelated module loses helpers such as
+    ``_ = lambda b: zlib.decompress(base64.b64decode(b[::-1]))``. Values are not
+    carried, only import aliases and AST definitions handled by the whitelist.
+    """
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return []
 
     ev = Evaluator()
+    if context is not None:
+        for key in ("aliases", "lambdas", "functions", "classes"):
+            getattr(ev, key).update(context.get(key, {}))
     ev.absorb(tree)
+    if context is not None:
+        for key in ("aliases", "lambdas", "functions", "classes"):
+            context.setdefault(key, {}).update(getattr(ev, key))
 
     found: list[Payload] = list(_sink_payloads(tree, ev))
     found.extend(_namespace_payloads(tree, ev))
@@ -250,7 +263,7 @@ def find_payloads(source: str) -> list[Payload]:
             if folded is None or folded == source:
                 continue
             try:
-                recovered = find_payloads(folded)
+                recovered = find_payloads(folded, context)
             except RecursionError:
                 recovered = []
             if recovered:
@@ -802,8 +815,9 @@ def peel(source: str, max_layers: int = MAX_LAYERS,
     layers: list[Layer] = []
     notes: list[str] = []
     current = source
+    context: dict = {"aliases": {}, "lambdas": {}, "functions": {}, "classes": {}}
     for _ in range(max_layers):
-        found = find_payloads(current)
+        found = find_payloads(current, context)
         if not found:
             break
         best = found[0]

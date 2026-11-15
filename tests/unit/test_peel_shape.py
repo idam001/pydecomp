@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import base64
 
-from pydecomp.engine.peel import _folded_source, _is_program, find_payloads
+from pydecomp.engine.peel import _folded_source, _is_program, find_payloads, peel
 
 
 def test_a_program_is_a_program() -> None:
@@ -108,6 +108,25 @@ def test_a_loader_inside_a_class_method_is_read() -> None:
     ) % (zlib.compress(payload),)
     found = find_payloads(source)
     assert any(item.data == payload for item in found)
+
+
+def test_nested_exec_layers_keep_static_helpers_and_exceed_old_cap():
+    """A loader's exec globals survive nesting; recover a 100-layer chain."""
+    import base64
+    import zlib
+
+    current = "answer = 42\n"
+    for _ in range(100):
+        blob = base64.b64encode(zlib.compress(current.encode()))[::-1].decode("ascii")
+        current = f"exec((_)(b'{blob}'))\n"
+    source = (
+        "_ = lambda __: __import__('zlib').decompress("
+        "__import__('base64').b64decode(__[::-1]))\n" + current)
+    layers, notes = peel(source)
+    assert len(layers) == 100
+    assert layers[-1].data == b"answer = 42\n"
+    assert layers[-1].is_source
+    assert not any("hit --max-layers" in note for note in notes)
 
 
 SINK_SPELLINGS = (

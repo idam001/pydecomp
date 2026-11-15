@@ -16,8 +16,9 @@ CODENAME = "the Almighty"
 MAX_DECOMPRESSED = 128 * 1024 * 1024
 
 #: nested layers followed before the engine stops *looking* for more shells
-#: (it still emits everything recovered so far - see engine.dig)
-MAX_LAYERS = 64
+#: (it still emits everything recovered so far - see engine.dig). 128 covers
+#: deeply repeated static wrappers while remaining a hard, predictable bound.
+MAX_LAYERS = 128
 
 #: largest recovered file the cosmetic passes will rewrite (bigger files are
 #: emitted verbatim rather than risked)
