@@ -257,6 +257,24 @@ pydecomp sample.py --no-anim --no-color  # plain text for CI
 pydecomp --selftest                      # check the install
 ```
 
+Analyst extras, all static:
+
+```bash
+pydecomp sample.pyc --disassemble        # bounded instruction dump, nothing run
+pydecomp sample.py --html --recipe       # offline HTML report + hash-only recipe
+pydecomp sample.py --source-map          # per-definition line spans and tiers
+pydecomp sample.py --target-versions 3.9,3.10   # compile-only syntax check
+pydecomp a_deob.py --compare-with b_deob.py     # per-function / per-indicator diff
+pydecomp samples/ --reports             # batch: iocs-all.md + batch-summary.json
+```
+
+Every recovery now reports **per-function confidence** (which definition is
+`semantic`, which is only `syntactic`), the **method that answered** (`ssa-ir` or
+`stack`), and **hints** for anything the lifter could not open. A local PyLingual
+can be used as an optional second opinion without breaking the no-shell promise:
+`--pylingual` prints the offline command, `--pylingual-import` compiles and diffs
+its answer against pydecomp's own.
+
 Interactive menu (no arguments):
 
 ```bash

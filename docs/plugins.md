@@ -35,3 +35,41 @@ the plugins that failed to load in `load_plugins.errors`.
 >>> summary()
 '1 decoder(s): rot47'
 ```
+
+## An external decompiler as an optional method (PyLingual)
+
+pydecomp keeps one non-negotiable promise: nothing in the package spawns a
+process, imports a sample, or uploads one. A second decompiler would break that,
+so PyLingual is supported **out of process, by you**:
+
+```console
+$ pydecomp sample.pyc --pylingual        # prints the command; runs nothing
+$ pydecomp sample.pyc --pylingual-import out/sample.py -o out
+```
+
+The plan pins every model cache offline (`UV_OFFLINE`, `HF_HUB_OFFLINE`,
+`PIP_NO_INDEX`, `TRANSFORMERS_OFFLINE`, `HF_DATASETS_OFFLINE`), passes one local
+`.pyc` path, and says `uploads: none`. The import bounds the file, runs a
+**compile-only** check, writes `sample_pylingual.py` with the same one-line
+provenance stamp, and diffs it per function against pydecomp's own answer
+(`triage/methods.py`).
+
+Why an out-of-process method rather than a bundled backend: PyLingual needs a
+model runtime and an interpreter matched to the target version, and its accuracy
+varies by version and sample. Handing pydecomp's guarantee to that dependency
+would make the guarantee conditional. This way the comparison is available, the
+guarantee is unchanged, and the analyst sees both answers instead of trusting
+one.
+
+## Comparing methods
+
+| method | how you get it | what it is |
+|---|---|---|
+| `ssa-ir` | default | SSA-built IR, emitted and graded against the original code object |
+| `stack` | automatic fallback, or `--legacy` | statement-by-statement lifter, no SSA |
+| `pylingual` | `--pylingual` plan, `--pylingual-import` | external model-based decompiler, run by the analyst |
+
+The run reports the first two in `"methods"` (JSON/Markdown/HTML), and any two
+recovered files can be compared — across a rebuild, a legacy run, or an imported
+method — with `--compare-with`, which reports functions added/removed/changed,
+indicator deltas, and a unified diff.

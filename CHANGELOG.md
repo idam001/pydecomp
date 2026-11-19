@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Confidence you can read one function at a time, and an honest second opinion
+
+A module tier hides its weakest function, and one decompiler's answer hides the
+question of what another would have said. Both are now visible without weakening
+the static-only guarantee.
+
+- **Per-function confidence** — every definition in the output is listed with its
+  own proof tier, line span and evidence (`triage/confidence.py`), in the
+  console, `.report.json`/`.report.md` and the HTML report. A `semantic` module
+  that holds a `syntactic` function now says which one.
+- **Recovery-method comparison** — the run reports which engine answered
+  (`ssa-ir` or `stack`) and the tier it earned (`triage/methods.py`).
+  `--compare-with PATH` diffs any two recoveries per function and per indicator,
+  with a unified diff; `--legacy` gives the second answer for the same sample.
+- **Unsupported-pattern hints** — when a construct stops the lifter, the reports
+  list what to try (`--legacy`, `--disassemble`, read the names table), keyed to
+  what the run actually recorded.
+- **`.pyc` disassembly** — `--disassemble` writes a versioned, bounded
+  instruction dump (`bytecode/dump.py`): every code object, its names, and every
+  instruction with its operand. Static: the header says `execution: none`.
+- **Target-version syntax checks** — `--target-versions 3.9,3.10` compiles for
+  the running interpreter and grammar-checks older targets in-process
+  (`bytecode/target.py`), with an honest `unavailable` beyond the interpreter's
+  reach. No subprocess, no execution.
+- **Source-to-layer mapping** — `--source-map` writes real `ast` line spans per
+  definition with the module's stage list, and labels the list as whole-module
+  provenance rather than inventing a per-line byte offset (`triage/source_map.py`).
+- **Recovery recipe** — `--recipe` writes a path-free `.recipe.json`: input and
+  output hashes, ordered steps, and the guarantee (`triage/recipe.py`).
+- **IOC evidence** — every indicator now carries its origin: the recovered-source
+  line it appears on, or `raw input (carved)` when it only exists in the bytes.
+  In the JSON, the HTML report and the sheet.
+- **Bounded archives** — ZIP and TAR members are read through `Archive.open()`
+  with a capped reader, plus member, per-entry and total limits (512 members,
+  32 MiB each, 128 MiB total). A lying header cannot expand past the cap.
+- **PyLingual as an optional method** — `--pylingual` prints the exact
+  offline, shell-free command to run a local PyLingual; `--pylingual-import`
+  adopts the output after a compile-only check and diffs it against pydecomp's
+  own recovery. The package still never spawns a process or uploads a sample.
+- **Offline profile** — `--offline` refuses `--fetch-iocs` so a lab run cannot
+  reach the network by accident.
+- **Batch summary** — a folder run now also writes `batch-summary.json`: one row
+  per file with its tier counts, the method that answered, its weak units and
+  its hints, next to the existing merged `iocs-all.md`.
+
+Measured after this change: **590 unit tests pass**, **36 gates green**, 296/296
+corpus cases recovered, single-file bundle 489,602 B and `--check`-clean.
+
+
 ### Fuzzing the readers found two crashes, both a stack away from the user
 
 `tools/fuzz_parsers.py` feeds deterministic mutations - byte flips, truncations,

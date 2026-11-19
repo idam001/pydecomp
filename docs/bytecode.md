@@ -99,3 +99,57 @@ as a comment with its opcode offset.
 
 Each of these is a `probes` case in the gate suite, so a regression shows up as
 a number rather than a user report.
+
+## Reading a `.pyc` without lifting it
+
+Sometimes the answer is not source yet — a function the emitter skipped, an
+opcode ahead of the lifter, a version oddity. `--disassemble` writes the view the
+lifter itself worked from:
+
+```console
+$ pydecomp sample.pyc --disassemble
+wrote sample.dis.txt
+```
+
+```
+pyc-disassembly: CPython 3.11
+input-bytes: 4218
+execution: none
+
+code-object '<module>'  firstlineno=0 bytes=311
+  names=['add', 'main']
+  000000  RESUME                           0
+  000002  PUSH_NULL                        0
+  000004  LOAD_NAME                        0  add
+  ...
+  code-object 'add'  firstlineno=1 bytes=29
+    names=['a', 'b']
+    000000  RESUME                           0
+    000002  LOAD_FAST                        0  a
+    000004  LOAD_FAST                        1  b
+    000006  BINARY_OP                        0  +
+    000008  RETURN_VALUE                     0
+```
+
+Three properties make it safe to point at an unknown file: it reads the bytes
+with pydecomp's own bounded marshal reader (never CPython's), it caps the work
+(`MAX_CODE_OBJECTS` 10,000, `MAX_INSTRUCTIONS` 2,000,000, 64 MiB input), and the
+header says `execution: none` because nothing in the file is imported or run.
+
+## Target-version syntax checks
+
+A recovery from 3.13 bytecode does not have to parse as 3.9 — and saying which
+versions it does parse as is a compile-only question. `--target-versions` answers
+it in-process: `compile()` for the running interpreter, `ast.parse` with
+`feature_version` for older grammars, and an honest `unavailable` for a target
+newer than the interpreter doing the judging. See
+[the CLI reference](cli.md#target-version-syntax-checks) for the table and exit
+codes.
+
+## Per-function confidence
+
+The proof is per *unit*, so a `semantic` module can hold a `syntactic` function.
+The proof model already stores tiers per name (`Proof.mark(name, tier, detail)`);
+`triage/confidence.py` joins that with the recovered AST so each definition is
+listed with its own tier, line span and evidence. It is the same data the proof
+file carries — read one function at a time instead of averaging a module.
