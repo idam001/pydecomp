@@ -145,6 +145,11 @@ def _magic_evidence(blob: bytes) -> bool:
     return blob.startswith(b"\x28\xb5\x2f\xfd")
 
 
+#: below this share of printable bytes a window is not text, however it decodes.
+#: Random bytes average 0.37; prose, base64 and hex sit far above 0.9.
+TEXT_FLOOR = 0.75
+
+
 def structured(blob: bytes) -> bool:
     """Evidence that a candidate is a real layer and not noise.
 
@@ -163,6 +168,11 @@ def structured(blob: bytes) -> bool:
     if not text:
         return False
     if not text.isprintable() and not _mostly_printable(text):
+        return False
+    # Being decodable is not evidence: a random ciphertext is mostly ASCII by
+    # chance, and ``decode(errors="ignore")`` throws away exactly the bytes that
+    # say so.  Measuring the window's own bytes is what keeps this honest.
+    if text_score(blob) < TEXT_FLOOR:
         return False
     return any(char.isalpha() for char in text)
 
