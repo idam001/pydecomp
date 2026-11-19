@@ -325,7 +325,31 @@ def extract(source: str, raw: bytes | None = None) -> dict:
         else:
             where[label] = "recovered"
     counts = {label: len(values) for label, values in iocs.items()}
+    evidence: dict[str, list[dict]] = {}
+    searchable = source[:8 * 1024 * 1024]
+    for label, values in iocs.items():
+        rows = []
+        for value in values:
+            position = searchable.find(value)
+            if position >= 0:
+                line = searchable.count("\n", 0, position) + 1
+                rows.append({"value": value, "origin": "recovered source", "line": line})
+            elif raw:
+                rows.append({"value": value, "origin": "raw input (carved)", "line": None})
+        if rows:
+            evidence[label] = rows
+    # a url carved from raw bytes has no line of its own; say where it came from
+    for label, values in iocs.items():
+        if label in evidence:
+            continue
+        origin = where.get(label, "")
+        if origin:
+            evidence[label] = [{"value": value,
+                                "origin": f"raw input ({origin})" if "carved" in origin
+                                          else origin, "line": None}
+                               for value in values[:40]]
     return {"iocs": iocs, "counts": counts, "where": where,
+            "evidence": evidence,
             "defanged": {label: [defang(value) for value in values]
                          for label, values in iocs.items()}}
 

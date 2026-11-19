@@ -24,6 +24,8 @@ from ..decoders.hyperion import is_hyperion
 from ..decoders.hyperion import note as hyperion_note
 from ..decoders.hyperion import payload as hyperion_payload
 from .splice import carry_over
+from ..containers.base import (MAX_ARCHIVE_ENTRY_BYTES, MAX_ARCHIVE_MEMBERS,
+                               MAX_ARCHIVE_TOTAL_BYTES, bounded_read)
 from ..decoders.pyinstaller import (carchive_entries, entry_script, is_carchive,
                                     is_pyz, pyz_modules)
 from ..decoders.pyobfuscate_com import decrypt as pyobfuscate_decrypt
@@ -325,34 +327,54 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
     if data[:2] == b"PK":
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                names = [n for n in archive.namelist()
-                         if n.endswith((".pyc", ".py", ".pyz", ".pyd"))]
-                if not names:
-                    # an archive holding archives: a packer that wraps twice.
-                    # Recurse into the members themselves rather than declaring
-                    # the container empty.
-                    nested = [n for n in archive.namelist()
-                              if not n.endswith("/") and archive.getinfo(n).file_size]
-                    nested.sort(key=lambda name: -archive.getinfo(name).file_size)
-                    trace.append(f"zip container · 0 python members, "
-                                 f"{len(nested)} member(s) to open")
-                    for name in nested[:6]:
-                        inner = _digest_bytes(archive.read(name), trace, depth + 1,
-                                              seen, max_depth)
+                infos = archive.infolist()[:MAX_ARCHIVE_MEMBERS]
+                python_infos = [info for info in infos if info.filename.endswith(
+                    (".pyc", ".py", ".pyz", ".pyd"))]
+                if not python_infos:
+                    # An archive holding archives: recurse only into bounded members.
+                    nested = sorted((info for info in infos if not info.is_dir()
+                                     and info.file_size > 0
+                                     and info.file_size <= MAX_ARCHIVE_ENTRY_BYTES),
+                                    key=lambda info: -info.file_size)[:6]
+                    trace.append("zip container · 0 python members, "
+                                 f"{len(nested)} bounded member(s) to open")
+                    expanded = 0
+                    for info in nested:
+                        remaining = MAX_ARCHIVE_TOTAL_BYTES - expanded
+                        if info.file_size > remaining:
+                            continue
+                        with archive.open(info, "r") as member:
+                            payload = bounded_read(member, min(MAX_ARCHIVE_ENTRY_BYTES, remaining))
+                        if payload is None:
+                            continue
+                        expanded += len(payload)
+                        inner = _digest_bytes(payload, trace, depth + 1, seen, max_depth)
                         if inner is not None:
                             return inner
                     return None
-                trace.append(f"zip container · {len(names)} python member(s)")
+                trace.append(f"zip container · {len(python_infos)} python member(s) "
+                             f"(bounded to {MAX_ARCHIVE_MEMBERS} entries)")
                 best = None
-                for name in names[:12]:
-                    inner = _digest_bytes(archive.read(name), trace, depth + 1,
-                                          seen, max_depth)
+                expanded = 0
+                for info in python_infos[:12]:
+                    remaining = MAX_ARCHIVE_TOTAL_BYTES - expanded
+                    if info.file_size < 0 or info.file_size > min(MAX_ARCHIVE_ENTRY_BYTES,
+                                                                  remaining):
+                        continue
+                    with archive.open(info, "r") as member:
+                        payload = bounded_read(member, min(MAX_ARCHIVE_ENTRY_BYTES, remaining))
+                    if payload is None:
+                        continue
+                    expanded += len(payload)
+                    inner = _digest_bytes(payload, trace, depth + 1, seen, max_depth)
                     if inner is None:
                         continue
                     if inner.is_source:
                         return inner
                     if best is None or (inner.kind == "pseudo" and best.kind != "pseudo"):
                         best = inner
+                    if expanded >= MAX_ARCHIVE_TOTAL_BYTES:
+                        break
                 if best is not None:
                     return best
         except Exception:
@@ -371,21 +393,32 @@ def _digest_bytes(data: bytes, trace: list, depth: int, seen: set,
 
     try:                                             # .tar / .tar.gz / .whl in disguise
         with tarfile.open(fileobj=io.BytesIO(data)) as archive:
-            members = [m for m in archive.getmembers()
-                       if m.isfile() and m.name.endswith((".py", ".pyc", ".pyz"))]
+            members = [m for m in archive.getmembers()[:MAX_ARCHIVE_MEMBERS]
+                       if m.isfile() and m.name.endswith((".py", ".pyc", ".pyz"))
+                       and 0 <= m.size <= MAX_ARCHIVE_ENTRY_BYTES]
             if members:
-                trace.append(f"tar container · {len(members)} python member(s)")
+                trace.append(f"tar container · {len(members)} bounded python member(s)")
                 best = None
+                expanded = 0
                 for member in members[:12]:
+                    remaining = MAX_ARCHIVE_TOTAL_BYTES - expanded
+                    if member.size > remaining:
+                        continue
                     handle = archive.extractfile(member)
                     if handle is None:
                         continue
-                    inner = _digest_bytes(handle.read(), trace, depth + 1, seen, max_depth)
+                    payload = bounded_read(handle, min(MAX_ARCHIVE_ENTRY_BYTES, remaining))
+                    if payload is None:
+                        continue
+                    expanded += len(payload)
+                    inner = _digest_bytes(payload, trace, depth + 1, seen, max_depth)
                     if inner is None:
                         continue
                     if inner.is_source:
                         return inner
                     best = best or inner
+                    if expanded >= MAX_ARCHIVE_TOTAL_BYTES:
+                        break
                 if best is not None:
                     return best
     except Exception:                                # noqa: BLE001

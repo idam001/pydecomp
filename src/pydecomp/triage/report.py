@@ -19,12 +19,14 @@ def analyse_recovered(source: str, trace: list | None = None,
     report = {"fingerprint": _fingerprint(source, trace), "imports": [],
               "pyarmor": pyarmor_note(source),
               "execs": [], "sys_modules": [], "iocs": {}, "risks": {},
-              "ioc_counts": {}, "ioc_where": {}, "ioc_summary": "none found",
+              "ioc_counts": {}, "ioc_where": {}, "ioc_evidence": {},
+              "ioc_summary": "none found",
               "defines": 0, "statements": 0}
     sheet = extract(source, raw)
     report["iocs"] = sheet["iocs"]
     report["ioc_counts"] = sheet["counts"]
     report["ioc_where"] = sheet["where"]
+    report["ioc_evidence"] = sheet.get("evidence", {})
     report["ioc_defanged"] = sheet["defanged"]
     report["ioc_summary"] = summary(sheet["iocs"])
     for label, pattern in _RISKY.items():
@@ -99,12 +101,16 @@ def write_reports(path: str, report: dict, trace: list, name: str, size: int,
         "iocs": report.get("iocs", {}),
         "ioc_counts": report.get("ioc_counts", {}),
         "ioc_where": report.get("ioc_where", {}),
+        "ioc_evidence": report.get("ioc_evidence", {}),
         "yara_check": report.get("yara_check", {}),
         "coverage": report.get("coverage", {}),
         "fidelity": report.get("fidelity", {}),
         "recovered": report.get("recovered", {}),
         "intel": report.get("intel", ""),
         "sealed_kinds": report.get("sealed", []),
+        "functions": report.get("functions", []),
+        "methods": report.get("methods", []),
+        "hints": report.get("hints", []),
         "behavior": report.get("risks", {}),
         "statements": report.get("statements", 0),
         "readme": list(notes or []),
@@ -157,6 +163,24 @@ def write_reports(path: str, report: dict, trace: list, name: str, size: int,
         else:
             md.append("- nothing flagged\n")
         md += ["", "## Imports", "", ", ".join(report.get("imports", [])) or "none", ""]
+        if report.get("functions"):
+            md += ["## Per-function confidence", "",
+                   "| tier | kind | lines | name |", "| --- | --- | --- | --- |"]
+            for row in report["functions"]:
+                lines = f"{row['lines'][0]}-{row['lines'][1]}"
+                md.append(f"| {row['tier']} | {row['kind']} | {lines} | `{row['name']}` |")
+            md.append("")
+        if report.get("methods"):
+            md += ["## Recovery methods", "",
+                   "| method | tier | chosen | detail |", "| --- | --- | --- | --- |"]
+            for row in report["methods"]:
+                md.append(f"| `{row['method']}` | {row['tier']} | "
+                          f"{'yes' if row['chosen'] else 'no'} | {row.get('detail', '')} |")
+            md.append("")
+        if report.get("hints"):
+            md += ["## What to try next", ""]
+            md += [f"- {hint}" for hint in report["hints"]]
+            md.append("")
         md_path = os.path.join(folder, stem + ".report.md")
         with open(md_path, "w", encoding="utf-8") as handle:
             handle.write("\n".join(md))

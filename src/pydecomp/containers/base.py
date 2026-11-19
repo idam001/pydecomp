@@ -16,6 +16,23 @@ import zipfile
 SKIP_SUFFIX = (".pyc.cache", ".so", ".pyd", ".dll", ".dylib", ".dist-info/RECORD",
                ".dist-info/WHEEL", ".dist-info/METADATA", ".dist-info/top_level.txt")
 SKIP_DIRS = ("__pycache__/", ".git/", "node_modules/", "tests/", "test/")
+MAX_ARCHIVE_MEMBERS = 512
+MAX_ARCHIVE_ENTRY_BYTES = 32 * 1024 * 1024
+MAX_ARCHIVE_TOTAL_BYTES = 128 * 1024 * 1024
+
+
+def bounded_read(handle, limit: int) -> bytes | None:
+    """Read no more than limit+1 bytes from an archive member."""
+    chunks = []
+    remaining = limit + 1
+    while remaining:
+        block = handle.read(min(64 * 1024, remaining))
+        if not block:
+            break
+        chunks.append(block)
+        remaining -= len(block)
+    data = b"".join(chunks)
+    return data if len(data) <= limit else None
 
 
 class FreezerReader:
@@ -53,17 +70,28 @@ class FreezerReader:
         if archive is None:
             return []
         out: list[tuple[str, bytes]] = []
+        expanded = 0
         try:
-            for info in archive.infolist():
+            for info in archive.infolist()[:MAX_ARCHIVE_MEMBERS]:
                 if info.is_dir() or not self._wanted(info.filename):
                     continue
                 if predicate and not predicate(info.filename):
                     continue
+                remaining = MAX_ARCHIVE_TOTAL_BYTES - expanded
+                if (info.file_size < 0 or info.file_size > MAX_ARCHIVE_ENTRY_BYTES
+                        or info.file_size > remaining):
+                    continue
                 try:
-                    out.append((info.filename, archive.read(info.filename)))
+                    with archive.open(info, "r") as member:
+                        data = bounded_read(member, min(MAX_ARCHIVE_ENTRY_BYTES, remaining))
+                    if data is None:
+                        continue
+                    out.append((info.filename, data))
+                    expanded += len(data)
                 except (KeyError, zipfile.BadZipFile, OSError, RuntimeError):
                     continue
-                if len(out) >= self.limit:
+                if (len(out) >= min(self.limit, MAX_ARCHIVE_MEMBERS)
+                        or expanded >= MAX_ARCHIVE_TOTAL_BYTES):
                     break
         finally:
             archive.close()
