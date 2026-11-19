@@ -62,7 +62,8 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
                 strict: bool = False, perfect: bool = False, proof: bool = True,
                 annotate: bool = False, pyarmor_runtime: str | None = None,
                 pyarmor_key: str | None = None,
-                fetch_iocs: bool = False, html_report: bool = False) -> str | None:
+                fetch_iocs: bool = False, html_report: bool = False,
+                recipe: bool = False, source_map: bool = False) -> str | None:
     """Unpack whatever this file is, save one file, print the result panel."""
     global EXIT_CODE
     EXIT_CODE = 0
@@ -207,6 +208,22 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     if fidelity is not None:
         report["fidelity"] = {key: fidelity[key] for key in ("kept", "reason")} | {
             "before": fidelity["before"], "after": fidelity["after"]}
+    # Per-function confidence and advice for whatever could not be opened: both
+    # read what the run already produced, and both go into the reports.
+    from ..triage.confidence import hints as _hints
+    records = []
+    try:
+        from ..lift.module import LIFT_QUALITY as _quality
+        records = [str(_quality.get("engine") or ""), str(_quality.get("error") or "")]
+        ir_report = _quality.get("ir") or {}
+        records.append(str(ir_report.get("detail") or ""))
+    except Exception:                               # noqa: BLE001 - optional context
+        pass
+    if artifact.stalled:
+        records.append("sealed encrypted payload")
+    report["hints"] = _hints(body, trace, records)
+    for hint in report["hints"]:
+        emit(paint("hint       " + hint, YELLOW))
     rule_text = None
     if yara:
         try:
@@ -267,6 +284,29 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
             return None
     tier_tint = {"perfect": GREEN, "semantic": GREEN, "structural": CYAN}.get(proof_obj.worst, YELLOW)
     emit(paint("proof      " + proof_obj.summary(), tier_tint))
+    # per-function confidence: the module tier and the unit tiers in one place
+    from ..triage.confidence import per_function as _per_function
+    from ..triage.confidence import overall_tier as _overall
+    proof_dict = proof_obj.as_dict()
+    report["functions"] = _per_function(body, proof_dict, _overall(proof_dict))
+    try:
+        from ..lift.module import LIFT_QUALITY as _quality
+        from ..triage.methods import engines as _engines
+        report["methods"] = _engines(dict(_quality))
+    except Exception:                               # noqa: BLE001 - optional context
+        report["methods"] = []
+    if not report["methods"]:
+        # a plain source input never reached a decompiler engine; say that
+        # rather than showing an empty table
+        report["methods"] = [{"method": artifact.kind, "tier": _overall(proof_dict),
+                              "detail": "no decompiler engine was needed for this input",
+                              "chosen": True}]
+    weak = [row["name"] for row in report["functions"]
+            if row["tier"] in ("structural", "syntactic", "unverified")]
+    if weak and report["functions"]:
+        shown_weak = ", ".join(weak[:6]) + (" …" if len(weak) > 6 else "")
+        emit(paint("units      " + f"{len(report['functions'])} definition(s); "
+                   f"weakest here: {shown_weak}", YELLOW))
 
     head = render_report(report, trace, name, raw_size, digest)
     text = "\n".join(head) + "\n\n" + body
@@ -306,12 +346,24 @@ def deobfuscate(src_path: str, out_dir: str | None = None,
     if reports:
         side = write_reports(path, report, trace, name, raw_size, digest, elapsed,
                              notes=clean_notes)
+    if recipe:
+        try:
+            from ..triage.recipe import write as write_recipe
+            side["recipe"] = write_recipe(path, raw, text, trace)
+        except OSError as exc:
+            emit(paint(f"recipe    could not write: {exc}", YELLOW))
     if proof:
         proof_obj.output = {
             "name": os.path.basename(path),
             "bytes": len(text.encode("utf-8", "surrogateescape")),
             "sha256": hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()}
         side = dict(side, **write_proof(proof_obj, path))
+        if source_map:
+            try:
+                from ..triage.source_map import write as write_source_map
+                side["source_map"] = write_source_map(path, body, proof_obj.as_dict(), trace)
+            except OSError as exc:
+                emit(paint(f"source map could not write: {exc}", YELLOW))
         if html_report:
             try:
                 from ..output.html import write as write_html
@@ -440,7 +492,62 @@ def deobfuscate_tree(target: str, out_dir: str | None = None, **kwargs) -> list[
     combined = _combine_sheets(written, sheets)
     if combined:
         print("   " + paint(f"+ {os.path.basename(combined)}", GREY))
+    summary = _batch_summary(written)
+    if summary:
+        print("   " + paint(f"+ {os.path.basename(summary)}", GREY))
     return written
+
+
+def _batch_summary(written: list) -> str | None:
+    """One JSON across the batch: per file, the method that answered and the weak units.
+
+    400 files produce 400 proofs; this is the table an analyst triages instead
+    of opening each one. It holds no recovered source and no paths.
+    """
+    import json
+    rows = []
+    for result in written:
+        folder = os.path.dirname(os.path.abspath(result))
+        stem = os.path.splitext(os.path.basename(result))[0]
+        proof_path = os.path.join(folder, stem + ".proof.json")
+        report_path = os.path.join(folder, stem + ".report.json")
+        row = {"output": os.path.basename(result)}
+        try:
+            with open(proof_path, encoding="utf-8") as handle:
+                proof = json.load(handle)
+            tiers = proof.get("tiers") or {}
+            row["tiers"] = {key: len(value) for key, value in tiers.items()}
+            row["worst"] = next((key for key in ("unverified", "syntactic", "structural",
+                                                 "semantic", "perfect") if tiers.get(key)),
+                                "unverified")
+            row["layers"] = len(proof.get("layers") or [])
+        except (OSError, ValueError):
+            pass
+        try:
+            with open(report_path, encoding="utf-8") as handle:
+                report = json.load(handle)
+            weak = [item["name"] for item in report.get("functions") or []
+                    if item.get("tier") in ("structural", "syntactic", "unverified")]
+            row["weak_units"] = weak[:20]
+            row["methods"] = [item.get("method") for item in report.get("methods") or []]
+            row["hints"] = list(report.get("hints") or [])[:6]
+        except (OSError, ValueError):
+            pass
+        if len(row) > 1:
+            rows.append(row)
+    if not written:
+        return None
+    folder = os.path.dirname(os.path.abspath(written[0]))
+    path = os.path.join(folder, "batch-summary.json")
+    try:
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"schema": "pydecomp-batch-v1",
+                       "files": len(written), "results": rows}, handle,
+                      indent=2, sort_keys=True)
+            handle.write("\n")
+    except OSError:
+        return None
+    return path
 
 
 def _combine_sheets(written: list, sheets: list) -> str | None:

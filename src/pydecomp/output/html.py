@@ -79,6 +79,28 @@ def render(name: str, source: str, proof: dict, report: dict | None = None,
         for item in (proof.get("inferred") or [])[:20])
     lost = "".join(f"<li>{html.escape(str(item))}</li>"
                    for item in (proof.get("lost") or []))
+    functions = (report or {}).get("functions") or []
+    function_rows = "".join(
+        f"<tr><td><span class=\"pill {_tier_class(row.get('tier', ''))}\">"
+        f"{html.escape(str(row.get('tier')))}</span></td>"
+        f"<td>{html.escape(str(row.get('kind')))}</td>"
+        f"<td><code>{html.escape('-'.join(str(n) for n in row.get('lines', [])))}</code></td>"
+        f"<td><code>{html.escape(str(row.get('name')))}</code></td>"
+        f"<td>{html.escape(str(row.get('detail') or ''))}</td></tr>" for row in functions)
+    methods = (report or {}).get("methods") or []
+    method_rows = "".join(
+        f"<tr><td><code>{html.escape(str(row.get('method')))}</code></td>"
+        f"<td>{html.escape(str(row.get('tier')))}</td>"
+        f"<td>{'✓' if row.get('chosen') else '·'}</td>"
+        f"<td>{html.escape(str(row.get('detail') or ''))}</td></tr>" for row in methods)
+    hints = (report or {}).get("hints") or []
+    hint_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in hints)
+    evidence = (report or {}).get("ioc_evidence") or {}
+    evidence_rows = "".join(
+        f"<tr><td>{html.escape(str(kind))}</td><td><code>{html.escape(str(row.get('value')))}"
+        f"</code></td><td>{html.escape(str(row.get('origin')))}</td>"
+        f"<td>{html.escape(str(row.get('line') if row.get('line') is not None else '—'))}</td>"
+        f"</tr>" for kind, rows in evidence.items() for row in list(rows)[:12])
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -106,6 +128,14 @@ sha256 <code>{html.escape(str(input_info.get('sha256', ''))[:32])}…</code> ·
          + html.escape(', '.join(tiers.get(key, [])[:22])) + "</code></td></tr>"
          for key in ('semantic', 'structural', 'syntactic', 'unverified'))}
 </tbody></table>
+<h2>per-function confidence</h2>
+{f"<table><thead><tr><th>tier</th><th>kind</th><th>lines</th><th>name</th><th>detail</th>"
+ f"</tr></thead><tbody>{function_rows}</tbody></table>" if function_rows else "<p>no definitions</p>"}
+{f"<h2>recovery methods</h2><table><thead><tr><th>method</th><th>tier</th><th>chosen</th>"
+ f"<th>detail</th></tr></thead><tbody>{method_rows}</tbody></table>" if method_rows else ""}
+{f"<h2>what to try next</h2><ul>{hint_items}</ul>" if hint_items else ""}
+{f"<h2>indicator evidence</h2><table><thead><tr><th>kind</th><th>value</th><th>origin</th>"
+ f"<th>line</th></tr></thead><tbody>{evidence_rows}</tbody></table>" if evidence_rows else ""}
 <h2>recovered source</h2>
 <pre>{html.escape(source[:400000])}</pre>
 {f"<h2>indicators</h2><table><thead><tr><th>kind</th><th>value</th></tr></thead>"

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from .bytecode.magic import host_version, parse_pyc
 from .bytecode.roundtrip import identity_report
@@ -119,6 +120,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--html", action="store_true",
                     help="also write a self-contained .report.html (source, proof, "
                          "indicators) that opens offline")
+    ap.add_argument("--recipe", action="store_true",
+                    help="write a path-free .recipe.json with input/output hashes and recovery steps")
+    ap.add_argument("--source-map", action="store_true",
+                    help="write recovered definition line spans with proof tiers and stage provenance")
+    ap.add_argument("--disassemble", action="store_true",
+                    help="write a bounded instruction dump for a .pyc without executing it")
+    ap.add_argument("--pylingual", action="store_true",
+                    help="print the exact offline command to run a local PyLingual on this "
+                         ".pyc, and how to import its answer (nothing is executed)")
+    ap.add_argument("--pylingual-import", metavar="FILE", default=None,
+                    help="adopt a PyLingual output file: compile-checked, then diffed "
+                         "against pydecomp's own recovery")
+    ap.add_argument("--compare-with", metavar="PATH",
+                    help="compare this recovered Python source with PATH; static only")
+    ap.add_argument("--target-versions", metavar="3.9,3.10",
+                    help="compile-only syntax-check the recovered output for these Python versions")
+    ap.add_argument("--offline", action="store_true",
+                    help="refuse network-capable options; analysis remains local/static")
     ap.add_argument("--check-proof", default=None, metavar="FILE",
                     help="re-derive a .proof.json from the sample and the output; "
                          "exits 4 if they have drifted")
@@ -151,6 +170,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="use the stack engine alone, skipping the SSA pipeline")
     ap.add_argument("--version", action="version", version=f"pydecomp {__version__}")
     args = ap.parse_args(argv)
+    if args.offline and args.fetch_iocs:
+        ap.error("--offline cannot be combined with --fetch-iocs")
+    if args.disassemble and args.pylingual:
+        ap.error("choose one bytecode path: --disassemble or --pylingual")
+    if (args.disassemble or args.pylingual or args.compare_with
+            or args.pylingual_import) and not args.file:
+        ap.error("this option requires an input path")
+    if args.compare_with and (args.disassemble or args.pylingual or args.pylingual_import):
+        ap.error("--compare-with cannot be combined with another comparison mode")
+    if args.source_map and args.no_proof:
+        ap.error("--source-map requires the proof data; remove --no-proof")
+    target_versions = None
+    if args.target_versions:
+        try:
+            from .bytecode.target import parse_versions
+            target_versions = parse_versions(args.target_versions)
+        except ValueError as exc:
+            ap.error(str(exc))
 
     if getattr(args, "legacy", False):
         from .lift.module import ENGINE_SWITCH
@@ -189,6 +226,56 @@ def main(argv: list[str] | None = None) -> int:
         from .mcp.server import serve
         return serve(allow_write=args.allow_write)
 
+    if args.compare_with:
+        try:
+            from .triage.compare import compare_files, render as render_comparison
+            result = compare_files(args.file, args.compare_with)
+        except (OSError, ValueError) as exc:
+            print(f"comparison failed: {exc}", file=sys.stderr)
+            return 2
+        print(render_comparison(result))
+        return 0
+
+    if args.disassemble:
+        from .bytecode.dump import dump_pyc
+        try:
+            source = Path(args.file)
+            text = dump_pyc(source.read_bytes())
+            destination = Path(args.out).expanduser() if args.out else source.parent
+            destination.mkdir(parents=True, exist_ok=True)
+            output = destination / (source.stem + ".dis.txt")
+            output.write_text(text, encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            print(f"disassembly unavailable: {exc}", file=sys.stderr)
+            return 1
+        print(f"wrote {output}")
+        return 0
+
+    if args.pylingual:
+        import json
+        from .plugins.backends.pylingual import plan
+        recipe = plan(args.file, args.out)
+        if not recipe.get("ok"):
+            print(f"PyLingual plan unavailable: {recipe.get('reason')}", file=sys.stderr)
+            return 1
+        print(json.dumps(recipe, indent=2, sort_keys=True))
+        return 0
+
+    if args.pylingual_import:
+        from .plugins.backends.pylingual import compare, ingest
+        output, message = ingest(args.pylingual_import, args.file, args.out)
+        print(message)
+        if not output:
+            return 1
+        print(f"wrote {output}")
+        own = Path(output).with_name(Path(output).name.replace("_pylingual.py", "_deob.py"))
+        try:
+            from .triage.compare import render
+            print(render(compare(own.read_text(encoding="utf-8"), output)))
+        except OSError:
+            pass
+        return 0
+
     if args.file:
         if USE_COLOR:
             header(do_clear=False)
@@ -211,7 +298,9 @@ def main(argv: list[str] | None = None) -> int:
                                        pyarmor_runtime=args.pyarmor_runtime,
                                        pyarmor_key=args.pyarmor_key,
                                        fetch_iocs=args.fetch_iocs,
-                                       html_report=args.html)
+                                       html_report=args.html,
+                                       recipe=args.recipe,
+                                       source_map=args.source_map)
             if written:
                 return 0
             from .engine import run as _run
@@ -228,7 +317,9 @@ def main(argv: list[str] | None = None) -> int:
                            pyarmor_runtime=args.pyarmor_runtime,
                            pyarmor_key=args.pyarmor_key,
                            fetch_iocs=args.fetch_iocs,
-                           html_report=args.html)
+                           html_report=args.html,
+                           recipe=args.recipe,
+                           source_map=args.source_map)
         if path is None and not os.path.exists(args.file):
             return 2                       # the name resolved nowhere: say so in the code
         if path and args.verify:
@@ -245,6 +336,22 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:                 # noqa: BLE001 - verification is optional
                 print("   " + paint(f"verification unavailable: "
                                     f"{type(exc).__name__}: {exc}", GREY))
+        if path and target_versions:
+            from .bytecode.target import check_source
+            try:
+                with open(path, "rb") as handle:
+                    results = check_source(handle.read(), target_versions)
+            except OSError as exc:
+                print(f"target-version check unavailable: {exc}", file=sys.stderr)
+                return 2
+            for result in results:
+                status = result["status"]
+                detail = f" — {result['detail']}" if result.get("detail") else ""
+                print(f"  Python {result['version']}: {status}{detail}")
+            if any(item["status"] == "invalid" for item in results):
+                return 4
+            if any(item["status"] in ("unavailable", "timeout") for item in results):
+                return 2
         if path:
             return 0
         from .engine import run as _run
