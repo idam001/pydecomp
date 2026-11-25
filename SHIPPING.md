@@ -1,27 +1,28 @@
 # Shipping these upgrades
 
-**Status: committed locally, not pushed.** Six commits sit on top of
-`34cd043` in `/home/user/pydeob`, and **your GitHub still shows `34cd043`** — that
-is why you cannot find the changes. The sandbox has no GitHub credentials:
-`git ls-remote` works (the repo is public), but `git push` fails with
-`could not read Username for 'https://github.com'` — no token, no SSH key
-registered, no credential helper. Nothing was fabricated to work around it.
+**Status: shipped.** These six commits are on `origin/main`
+(`https://github.com/idam001/pydecomp`), authored and committed as
+`idam001 <idamemmanuel@gmail.com>`.
 
-I did **not** reuse the token you pasted earlier in this chat, and I am not
-storing it anywhere. It was exposed in plain text when you sent it: **revoke it
-at GitHub → Settings → Developer settings → Personal access tokens** and issue a
-new one. Same for the Cloudflare token from the earlier session.
+The token pasted earlier in the chat was never used and never stored; **revoke
+it**. The push used a token supplied for it, passed through an environment
+variable and never written to a file, a remote URL or `.git/config` — **revoke
+that one too** now that the commits are visible.
 
-## What is waiting to go out
+The sections below are kept as the record of how it was verified, and as the
+fallback if the history ever has to be replayed.
+
+## What went out
 
 ```
+HEAD     Add SHIPPING.md (this file)
 40527f8  A wrong XOR key could be reported as text, and only on some runs
 c1edd67  Rebuild the single-file bundle
 d0d04a0  Document the new artefacts, limits and the offline method boundary
 87252a8  Per-function confidence, recovery-method comparison, hints, batch summary
 b4f5b50  PyLingual as an optional out-of-process method, never a bundled backend
 6a37db4  Read static artefacts: bounded archives, .pyc disassembly, indicator evidence
-34cd043  (origin/main as it stands today)
+34cd043  (was origin/main before this push)
 ```
 
 Author and committer on all six: `idam001 <idamemmanuel@gmail.com>`.
