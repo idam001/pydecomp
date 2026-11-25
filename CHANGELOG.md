@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### SECURITY.md removed
+
+The security policy file is gone at the maintainer's request. The maintainer
+still triages vulnerability reports sent privately (see `GOVERNANCE.md`); there
+is simply no longer a file promising a disclosure timeline. README, `pyproject`
+project URLs and `GOVERNANCE.md` no longer point at it, and `test_repo.py` no
+longer requires it. 588 tests pass.
+
 ### A wrong key was being accepted as text, and only sometimes
 
 `tests/unit/test_plugins.py::test_a_repeating_key_is_not_guessed_from_too_little_data`

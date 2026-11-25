@@ -462,7 +462,6 @@ do not paste live malware; use a hash plus a redacted or defanged snippet.
 
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Governance](GOVERNANCE.md)
-- [Security policy](SECURITY.md) — for vulnerabilities *in pydecomp*
 - [Changelog](CHANGELOG.md)
 - [Documentation](docs/index.md)
 

@@ -46,7 +46,7 @@ def test_fixtures_are_reproducible():
 
 @pytest.mark.parametrize("name", [
     "README.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
-    "SECURITY.md", "GOVERNANCE.md", "CITATION.cff", "pyproject.toml", "mkdocs.yml",
+    "GOVERNANCE.md", "CITATION.cff", "pyproject.toml", "mkdocs.yml",
     "Dockerfile", ".pre-commit-config.yaml", ".editorconfig", ".gitignore",
 ])
 def test_repository_furniture_exists(name):
@@ -54,7 +54,7 @@ def test_repository_furniture_exists(name):
 
 
 @pytest.mark.parametrize("name", [
-    "CONTRIBUTING.md", "SECURITY.md", "GOVERNANCE.md", "CHANGELOG.md", "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md", "GOVERNANCE.md", "CHANGELOG.md", "CODE_OF_CONDUCT.md",
 ])
 def test_readme_links_resolve(name):
     readme = (ROOT / "README.md").read_text(encoding="utf-8")

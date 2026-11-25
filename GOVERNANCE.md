@@ -22,7 +22,7 @@ Own the release process, the gates and the security advisories. Responsible for:
 
 - merging to `main`,
 - publishing releases and the single-file build,
-- triaging `SECURITY.md` reports,
+- triaging vulnerability reports sent privately to the maintainer,
 - deciding scope (see *Scope discipline* below).
 
 Current maintainers are listed in [.github/CODEOWNERS](.github/CODEOWNERS).
